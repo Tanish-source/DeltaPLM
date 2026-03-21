@@ -139,9 +139,9 @@ export default function EcoList() {
         description="Manage and track product and BoM changes."
       >
         {canCreate && (
-          <Button onClick={() => navigate('/ecos/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create ECO
+          <Button onClick={() => navigate('/ecos/new')} className="flex items-center gap-1.5">
+            <Plus className="h-4 w-4" />
+            <span>Create ECO</span>
           </Button>
         )}
       </PageHeader>

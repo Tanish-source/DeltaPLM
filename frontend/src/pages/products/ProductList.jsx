@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ROLES } from '@/lib/constants'
 import PageHeader from '@/components/shared/PageHeader'
 import DataTable from '@/components/shared/DataTable'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Plus, Eye, Pencil, Archive, ArchiveRestore } from 'lucide-react'
 
@@ -119,12 +119,10 @@ export default function ProductList() {
     <div className="space-y-6">
       <PageHeader title="Products" description="Manage your master product data.">
         {canEdit && (
-          <Button asChild>
-            <Link to="/products/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Create Product
-            </Link>
-          </Button>
+          <Link to="/products/new" className={`${buttonVariants({ variant: 'default' })} flex flex-row items-center gap-1.5`}>
+            <Plus className="h-4 w-4" />
+            <span>Create Product</span>
+          </Link>
         )}
       </PageHeader>
 

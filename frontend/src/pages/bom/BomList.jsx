@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ROLES } from '@/lib/constants'
 import PageHeader from '@/components/shared/PageHeader'
 import DataTable from '@/components/shared/DataTable'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Plus, Eye, Pencil, Archive, ArchiveRestore } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -140,12 +140,10 @@ export default function BomList() {
     <div className="space-y-6">
       <PageHeader title="Bills of Materials" description="Manage sub-components and operations for your products.">
         {canEdit && (
-          <Button asChild>
-            <Link to="/boms/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Create BoM
-            </Link>
-          </Button>
+          <Link to="/boms/new" className={`${buttonVariants({ variant: 'default' })} flex flex-row items-center gap-1.5`}>
+            <Plus className="h-4 w-4" />
+            <span>Create BoM</span>
+          </Link>
         )}
       </PageHeader>
 
