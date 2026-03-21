@@ -4,6 +4,7 @@ import { getProduct, createProduct, updateProduct, archiveProduct } from '@/api/
 import { useAuth } from '@/contexts/AuthContext'
 import { ROLES } from '@/lib/constants'
 import PageHeader from '@/components/shared/PageHeader'
+import VersionHistory from '@/components/shared/VersionHistory'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -272,6 +273,14 @@ export default function ProductForm() {
           </div>
         )}
       </form>
+
+      {/* Phase 6 — Version History (only shown when viewing existing product) */}
+      {isEditing && productData && (
+        <div className="mt-8">
+          <VersionHistory productId={id} productName={productData.name} />
+        </div>
+      )}
     </div>
   )
 }
+

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { registerUser } from '@/api/auth'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, Loader2, CheckCircle2 } from 'lucide-react'
@@ -126,9 +126,9 @@ export default function Signup() {
               Your account has been created successfully. Your role will be
               assigned by an administrator. You can now sign in.
             </p>
-            <Button asChild className="w-full">
-              <Link to="/login">Go to Sign In</Link>
-            </Button>
+            <Link to="/login" className={buttonVariants({ variant: 'outline', className: 'w-full' })}>
+              Back to Login
+            </Link>
           </CardContent>
         </Card>
       </div>

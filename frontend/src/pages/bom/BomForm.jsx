@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertCircle, ArrowLeft, Loader2, Plus, X } from 'lucide-react'
+import VersionHistory from '@/components/shared/VersionHistory'
 
 export default function BomForm() {
   const { id } = useParams()
@@ -221,8 +222,8 @@ export default function BomForm() {
           <CardHeader className="flex flex-row items-center justify-between pb-2 border-b">
             <CardTitle className="text-lg">Components</CardTitle>
             {!isReadOnly && (
-              <Button type="button" variant="ghost" size="sm" onClick={addComponent}>
-                <Plus className="h-4 w-4 mr-1" /> Add Component
+              <Button type="button" variant="ghost" size="sm" onClick={addComponent} className="flex flex-row items-center gap-1.5">
+                <Plus className="h-4 w-4" /> <span>Add Component</span>
               </Button>
             )}
           </CardHeader>
@@ -291,8 +292,8 @@ export default function BomForm() {
           <CardHeader className="flex flex-row items-center justify-between pb-2 border-b">
             <CardTitle className="text-lg">Operations</CardTitle>
             {!isReadOnly && (
-              <Button type="button" variant="ghost" size="sm" onClick={addOperation}>
-                <Plus className="h-4 w-4 mr-1" /> Add Operation
+              <Button type="button" variant="ghost" size="sm" onClick={addOperation} className="flex flex-row items-center gap-1.5">
+                <Plus className="h-4 w-4" /> <span>Add Operation</span>
               </Button>
             )}
           </CardHeader>
@@ -390,13 +391,23 @@ export default function BomForm() {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isEditing ? 'Save Changes' : 'Create BoM'}
+            <Button type="submit" disabled={isSubmitting} className="flex flex-row items-center gap-1.5">
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <span>{isEditing ? 'Save Changes' : 'Create BoM'}</span>
             </Button>
           </div>
         )}
       </form>
+
+      {/* Phase 6 — Version History (only shown when viewing existing BoM) */}
+      {isEditing && bomData && (
+        <div className="mt-8">
+          <VersionHistory
+            productId={bomData.product?.id || bomData.product}
+            productName={products.find(p => p.id.toString() === product)?.name || `Product ${product}`}
+          />
+        </div>
+      )}
     </div>
   )
 }

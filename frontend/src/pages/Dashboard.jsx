@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ROLES, ECO_STATUS, ECO_STATUS_LABELS } from '@/lib/constants'
 import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -129,20 +129,16 @@ export default function Dashboard() {
         description="Here's what's happening with your products and ECOs."
       >
         {hasRole([ROLES.ENGINEERING, ROLES.ADMIN]) && (
-          <Button asChild>
-            <Link to="/ecos/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Create ECO
-            </Link>
-          </Button>
+          <Link to="/ecos/new" className={`${buttonVariants({ variant: 'default' })} flex flex-row items-center gap-1.5`}>
+            <Plus className="h-4 w-4" />
+            <span>Create ECO</span>
+          </Link>
         )}
         {hasRole([ROLES.ADMIN]) && (
-          <Button variant="outline" asChild>
-            <Link to="/stages">
-              <Settings className="mr-2 h-4 w-4" />
-              Manage Stages
-            </Link>
-          </Button>
+          <Link to="/stages" className={`${buttonVariants({ variant: 'outline' })} flex flex-row items-center gap-1.5`}>
+            <Settings className="h-4 w-4" />
+            <span>Manage Stages</span>
+          </Link>
         )}
       </PageHeader>
 
@@ -193,12 +189,10 @@ export default function Dashboard() {
               Latest engineering change orders
             </p>
           </div>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/ecos" className="text-sm">
-              View all
-              <ArrowRight className="ml-1 h-3.5 w-3.5" />
-            </Link>
-          </Button>
+          <Link to="/ecos" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+            <span className="text-sm">View all</span>
+            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+          </Link>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -292,24 +286,18 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-3">
-              <Button variant="outline" className="justify-start" asChild>
-                <Link to="/products">
-                  <Package className="mr-2 h-4 w-4" />
-                  View Products
-                </Link>
-              </Button>
-              <Button variant="outline" className="justify-start" asChild>
-                <Link to="/boms">
-                  <Layers className="mr-2 h-4 w-4" />
-                  View BoMs
-                </Link>
-              </Button>
-              <Button variant="outline" className="justify-start" asChild>
-                <Link to="/reports">
-                  <BarChart3 className="mr-2 h-4 w-4" />
-                  View Reports
-                </Link>
-              </Button>
+              <Link to="/products" className={buttonVariants({ variant: 'outline', className: 'justify-start' })}>
+                <Package className="mr-2 h-4 w-4" />
+                View Products
+              </Link>
+              <Link to="/boms" className={buttonVariants({ variant: 'outline', className: 'justify-start' })}>
+                <Layers className="mr-2 h-4 w-4" />
+                View BoMs
+              </Link>
+              <Link to="/reports" className={buttonVariants({ variant: 'outline', className: 'justify-start' })}>
+                <BarChart3 className="mr-2 h-4 w-4" />
+                View Reports
+              </Link>
             </div>
           </CardContent>
         </Card>

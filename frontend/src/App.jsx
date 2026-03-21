@@ -11,8 +11,10 @@ import BomForm from '@/pages/bom/BomForm'
 import EcoList from '@/pages/eco/EcoList'
 import EcoForm from '@/pages/eco/EcoForm'
 import EcoDetail from '@/pages/eco/EcoDetail'
+import EcoComparison from '@/pages/eco/EcoComparison'
 import StageSettings from '@/pages/stages/StageSettings'
-import ComingSoon from '@/pages/ComingSoon'
+import AuditLog from '@/pages/audit/AuditLog'
+import Reports from '@/pages/reports/Reports'
 import { ROLES } from '@/lib/constants'
 
 function App() {
@@ -49,6 +51,9 @@ function App() {
         {/* ECO Detail — Phase 5 */}
         <Route path="/ecos/:id/detail" element={<EcoDetail />} />
 
+        {/* ECO Comparison — Phase 7 */}
+        <Route path="/comparison/:ecoId" element={<EcoComparison />} />
+
         {/* ECO Stages — Phase 4 (Admin only) */}
         <Route
           path="/stages"
@@ -59,18 +64,15 @@ function App() {
           }
         />
 
-        {/* Comparison — Phase 7 */}
-        <Route path="/comparison/:ecoId" element={<ComingSoon />} />
-
         {/* Reports — Phase 9 */}
-        <Route path="/reports" element={<ComingSoon />} />
+        <Route path="/reports" element={<Reports />} />
 
         {/* Audit Log — Phase 8 (Admin & Approver) */}
         <Route
           path="/audit"
           element={
             <ProtectedRoute roles={[ROLES.ADMIN, ROLES.APPROVER]}>
-              <ComingSoon />
+              <AuditLog />
             </ProtectedRoute>
           }
         />
@@ -83,4 +85,3 @@ function App() {
 }
 
 export default App
-

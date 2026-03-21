@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Construction, ArrowLeft } from 'lucide-react'
 
 /**
@@ -27,12 +27,10 @@ export default function ComingSoon() {
       <p className="text-sm text-muted-foreground max-w-md mb-6">
         This page is under construction and will be available in the next phase.
       </p>
-      <Button variant="outline" asChild>
-        <Link to="/">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Link>
-      </Button>
+      <Link to="/" className={buttonVariants({ variant: 'outline' })}>
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Return to Dashboard
+      </Link>
     </div>
   )
 }
