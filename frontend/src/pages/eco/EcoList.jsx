@@ -95,7 +95,7 @@ export default function EcoList() {
     { 
       key: 'created_by_name', 
       label: 'Created By',
-      render: (row) => row.created_by_name || '-'
+      render: (row) => row.created_by_username || row.created_by_name || '-'
     },
     { 
       key: 'created_at', 

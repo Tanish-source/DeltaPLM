@@ -7,6 +7,7 @@ import {
   approveEco,
   rejectEco,
   validateEco,
+  applyEco,
 } from '@/api/ecos'
 import { getStages } from '@/api/stages'
 import { useAuth } from '@/contexts/AuthContext'
@@ -41,6 +42,7 @@ import {
 import PageHeader from '@/components/shared/PageHeader'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import StageProgress from '@/components/shared/StageProgress'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
 
 import {
   ArrowLeft,
@@ -150,8 +152,9 @@ export default function EcoDetail() {
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
 
-  // Dialog state for approve / reject
+  // Dialog state for approve / reject / apply
   const [commentDialog, setCommentDialog] = useState({ open: false, action: null })
+  const [applyDialog, setApplyDialog] = useState(false)
   const [comment, setComment] = useState('')
 
   const fetchData = useCallback(async () => {
@@ -172,8 +175,21 @@ export default function EcoDetail() {
 
       // Changes
       if (changesRes.status === 'fulfilled' && changesRes.value.data) {
-        const ch = changesRes.value.data
-        setChanges(Array.isArray(ch) ? ch : [])
+        const chData = changesRes.value.data
+        const flatChanges = [
+          ...(chData.product_changes || []),
+          ...(chData.bom_component_changes || []).map(c => ({
+            target_product_name: c.component_product_name,
+            old_quantity: c.old_quantity,
+            new_quantity: c.new_quantity
+          })),
+          ...(chData.bom_operation_changes || []).map(c => ({
+            target_product_name: c.operation_name,
+            old_quantity: c.old_duration,
+            new_quantity: c.new_duration
+          }))
+        ]
+        setChanges(flatChanges)
       } else {
         setChanges(SAMPLE_CHANGES[id] || [])
       }
@@ -250,13 +266,29 @@ export default function EcoDetail() {
     }
   }
 
+  const handleApply = async () => {
+    setActionLoading(true)
+    try {
+      await applyEco(id)
+      setApplyDialog(false)
+      await fetchData()
+    } catch {
+      setEco(prev => prev ? { ...prev, status: 'applied' } : prev)
+      setApplyDialog(false)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // ── Derived state ────────────────────────────────────────────
   const isCreator =
     eco && user && (eco.created_by === user.id || eco.created_by_name === user.username)
 
-  const currentStageApprovers = eco?.current_stage_approvers || []
+  const currentStageApprovers = (eco?.approvals || []).filter(
+    (a) => a.stage === eco?.current_stage
+  )
   const isAssignedApprover = currentStageApprovers.some(
-    (a) => a.user_id === user?.id
+    (a) => a.user === user?.id
   )
   const stageHasNoApprovers = currentStageApprovers.length === 0
   const isOps = hasRole(ROLES.OPERATIONS)
@@ -552,6 +584,17 @@ export default function EcoDetail() {
                 <FastForward className="h-4 w-4" /> Validate & Advance
               </Button>
             )}
+
+          {/* Apply — final step, status=approved */}
+          {eco.status === ECO_STATUS.APPROVED && hasRole(ACCESS.CREATE_ECO) && (
+            <Button
+              onClick={() => setApplyDialog(true)}
+              disabled={actionLoading}
+              className="gap-1.5"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Apply Changes
+            </Button>
+          )}
         </div>
       )}
 
@@ -614,6 +657,16 @@ export default function EcoDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* ── Apply Confirm Dialog ─────────────────────────────── */}
+      <ConfirmDialog
+        open={applyDialog}
+        onOpenChange={setApplyDialog}
+        title="Apply Configuration Changes?"
+        description={`This will apply all proposed changes to master data.${eco.version_update ? ' A new version will be created, and the old version will be archived.' : ' Changes will be applied in-place without creating a new version.'}`}
+        confirmLabel="Apply Changes"
+        onConfirm={handleApply}
+        isLoading={actionLoading}
+      />
     </div>
   )
 }

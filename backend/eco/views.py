@@ -67,7 +67,7 @@ class ECOViewSet(viewsets.ModelViewSet):
     def submit_eco(self, request, pk=None):
         eco = self.get_object()
         try:
-            eco = submit_eco_to_workflow(eco)
+            eco = submit_eco_to_workflow(eco, request.user)
             return Response({'status': eco.status, 'state': eco.current_stage.name if eco.current_stage else 'APPROVED'})
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -96,7 +96,7 @@ class ECOViewSet(viewsets.ModelViewSet):
     def validate_eco(self, request, pk=None):
         eco = self.get_object()
         try:
-            eco = validate_stage(eco)
+            eco = validate_stage(eco, request.user)
             return Response({'status': eco.status})
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -106,11 +106,66 @@ class ECOViewSet(viewsets.ModelViewSet):
         """Apply an approved ECO to master data. Auto-sets effective_date."""
         eco = self.get_object()
         try:
-            eco = apply_eco(eco)
+            eco = apply_eco(eco, request.user)
             serializer = self.get_serializer(eco)
             return Response(serializer.data)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='diff')
+    def diff(self, request, pk=None):
+        eco = self.get_object()
+        if eco.eco_type == ECO.ECOType.PRODUCT:
+            changes = []
+            for c in eco.product_changes.all():
+                changes.append({
+                    "field": c.field_name,
+                    "old": c.old_value,
+                    "new": c.new_value
+                })
+            
+            version_old = eco.product.version
+            if eco.status == ECO.Status.APPLIED and eco.version_update:
+                version_new = version_old + 1
+            else:
+                version_new = version_old if not eco.version_update else version_old + 1
+
+            return Response({
+                "product_name": eco.product.name,
+                "version_old": version_old,
+                "version_new": version_new,
+                "changes": changes
+            })
+            
+        elif eco.eco_type == ECO.ECOType.BOM:
+            components = []
+            for c in eco.bom_component_changes.all():
+                components.append({
+                    "name": getattr(c.component_product, 'name', f"Product {c.component_product_id}"),
+                    "old_qty": str(c.old_quantity) if c.old_quantity is not None else None,
+                    "new_qty": str(c.new_quantity) if c.new_quantity is not None else None,
+                    "change": c.change_type
+                })
+                
+            operations = []
+            for c in eco.bom_operation_changes.all():
+                operations.append({
+                    "name": c.operation_name,
+                    "old": str(c.old_duration) if c.old_duration is not None else None,
+                    "new": str(c.new_duration) if c.new_duration is not None else None,
+                    "change": c.change_type
+                })
+                
+            bom_version_old = eco.bom.version if eco.bom else 1
+            bom_version_new = bom_version_old + 1 if eco.version_update else bom_version_old
+                
+            return Response({
+                "product_name": eco.product.name if eco.product else "Unknown",
+                "bom_version_old": bom_version_old,
+                "bom_version_new": bom_version_new,
+                "components": components,
+                "operations": operations
+            })
 
     @action(detail=True, methods=['get'], url_path='changes')
     def get_changes(self, request, pk=None):

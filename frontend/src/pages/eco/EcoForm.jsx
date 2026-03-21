@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { getEco, createEco, updateEco, submitEco } from '@/api/ecos'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { getEco, createEco, updateEco } from '@/api/ecos'
 import { getProducts, getProduct } from '@/api/products'
 import { getBoms, getBom } from '@/api/boms'
-import { ECO_TYPE, ECO_STATUS } from '@/lib/constants'
+import { getUsers } from '@/api/users'
+import { ECO_TYPE, ECO_STATUS, ROLES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,26 +12,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import PageHeader from '@/components/shared/PageHeader'
 import FormField from '@/components/shared/FormField'
+import { useAuth } from '@/contexts/AuthContext'
+import { Loader2 } from 'lucide-react'
 
 export default function EcoForm() {
   const navigate = useNavigate()
   const { id } = useParams()
   const isEdit = !!id
 
+  const { hasRole } = useAuth()
+  const canEdit = hasRole([ROLES.ENGINEERING, ROLES.ADMIN])
+
   const [isLoading, setIsLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    title: '',
-    eco_type: ECO_TYPE.PRODUCT,
-    product: '',
-    bom: '',
-    effective_date: '',
-    version_update: true,
-    status: ECO_STATUS.NEW,
-    changes: []
-  })
+  const [isSubmitting, setIsSubmitting] = useState(false) // New state for submission
+  const [ecoData, setEcoData] = useState(null) // Original ECO data if editing
+
+  // Form states
+  const [title, setTitle] = useState('')
+  const [ecoType, setEcoType] = useState(ECO_TYPE.PRODUCT)
+  const [product, setProduct] = useState('')
+  const [bom, setBom] = useState('')
+  const [responsibleUser, setResponsibleUser] = useState('')
+  const [effectiveDate, setEffectiveDate] = useState('')
+  const [versionUpdate, setVersionUpdate] = useState(true)
 
   const [products, setProducts] = useState([])
   const [boms, setBoms] = useState([])
+  const [users, setUsers] = useState([])
   const [targetData, setTargetData] = useState(null)
   
   // Local changes editor state
@@ -44,42 +52,70 @@ export default function EcoForm() {
   const [bomChanges, setBomChanges] = useState([])
 
   useEffect(() => {
-    fetchProducts()
-    if (isEdit) {
-      loadEco()
-    }
-  }, [id])
+    const fetchData = async () => {
+      setIsLoading(true)
+      try {
+        // Fetch active master data and users
+        const [prodRes, bomRes, userRes] = await Promise.all([
+          getProducts({ is_active: true }),
+          getBoms({ is_active: true }),
+          getUsers()
+        ])
+        
+        setProducts(prodRes.data?.results || prodRes.data || [])
+        setBoms(bomRes.data?.results || bomRes.data || [])
+        setUsers(userRes.data?.results || userRes.data || [])
 
-  useEffect(() => {
-    if (formData.eco_type === ECO_TYPE.BOM && formData.product) {
-      fetchBoms(formData.product)
-    } else {
-      setBoms([])
-      if (formData.eco_type === ECO_TYPE.BOM) {
-        setFormData(prev => ({ ...prev, bom: '' }))
+        if (isEdit) {
+          const { data } = await getEco(id)
+          setEcoData(data)
+          setTitle(data.title || '')
+          setEcoType(data.eco_type || ECO_TYPE.PRODUCT)
+          setProduct(data.product?.id?.toString() || data.product?.toString() || '')
+          setBom(data.bom?.id?.toString() || data.bom?.toString() || '')
+          setResponsibleUser(data.responsible_user?.id?.toString() || data.created_by?.id?.toString() || '')
+          setEffectiveDate(data.effective_date || '')
+          setVersionUpdate(data.version_update ?? true)
+
+          // Set initial changes for editing
+          if (data.eco_type === ECO_TYPE.PRODUCT && data.product_changes && data.product_changes.length > 0) {
+            const nameChange = data.product_changes.find(c => c.field_name === 'name')
+            const salePriceChange = data.product_changes.find(c => c.field_name === 'sale_price')
+            const costPriceChange = data.product_changes.find(c => c.field_name === 'cost_price')
+            setProductChanges({
+              name: nameChange ? nameChange.new_value : '',
+              sale_price: salePriceChange ? salePriceChange.new_value : '',
+              cost_price: costPriceChange ? costPriceChange.new_value : ''
+            })
+          } else if (data.eco_type === ECO_TYPE.BOM && data.bom_component_changes && data.bom_component_changes.length > 0) {
+            setBomChanges(data.bom_component_changes.map(c => ({
+              component_id: c.component_product,
+              name: c.component_product_name || `Product ${c.component_product}`,
+              old_qty: c.old_quantity,
+              new_qty: c.new_quantity,
+              change_type: 'modify'
+            })))
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch initial data:', error)
+      } finally {
+        setIsLoading(false)
       }
     }
-  }, [formData.product, formData.eco_type])
+    fetchData()
+  }, [id, isEdit])
 
-  const fetchProducts = async () => {
-    try {
-      const res = await getProducts({ is_active: true })
-      const list = res.data?.results || res.data || []
-      setProducts(Array.isArray(list) ? list : [])
-    } catch {
-      console.error('Failed to fetch products')
+  useEffect(() => {
+    if (ecoType === ECO_TYPE.BOM && product) {
+      // Filter boms based on selected product
+      // This logic is now handled by `availableBoms` getter
+    } else {
+      // if (ecoType === ECO_TYPE.BOM) {
+      //   setBom('') // Clear BOM if product is cleared or type changes from BOM
+      // }
     }
-  }
-
-  const fetchBoms = async (productId) => {
-    try {
-      const res = await getBoms({ product: productId, is_active: true })
-      const list = res.data?.results || res.data || []
-      setBoms(Array.isArray(list) ? list : [])
-    } catch {
-      console.error('Failed to fetch boms')
-    }
-  }
+  }, [product, ecoType])
 
   const loadTargetData = async (type, targetId) => {
     if (!targetId) {
@@ -90,21 +126,27 @@ export default function EcoForm() {
       if (type === ECO_TYPE.PRODUCT) {
         const res = await getProduct(targetId)
         setTargetData(res.data)
-        setProductChanges({
-          name: res.data.name,
-          sale_price: res.data.sale_price || '',
-          cost_price: res.data.cost_price || ''
-        })
+        // Only set productChanges if not in edit mode or if changes haven't been loaded from ecoData
+        if (!isEdit || !ecoData?.product_changes?.length) {
+          setProductChanges({
+            name: res.data.name,
+            sale_price: res.data.sale_price || '',
+            cost_price: res.data.cost_price || ''
+          })
+        }
       } else if (type === ECO_TYPE.BOM) {
         const res = await getBom(targetId)
         setTargetData(res.data)
-        setBomChanges((res.data.components || []).map(c => ({
-          component_id: c.product.id,
-          name: c.product.name,
-          old_qty: c.quantity,
-          new_qty: c.quantity,
-          change_type: 'modify'
-        })))
+        // Only set bomChanges if not in edit mode or if changes haven't been loaded from ecoData
+        if (!isEdit || !ecoData?.bom_component_changes?.length) {
+          setBomChanges((res.data.components || []).map(c => ({
+            component_id: c.component_product,
+            name: c.component_product_name || `Product ${c.component_product}`,
+            old_qty: c.quantity,
+            new_qty: c.quantity,
+            change_type: 'modify'
+          })))
+        }
       }
     } catch (e) {
       console.error('Failed to load target:', e)
@@ -112,42 +154,23 @@ export default function EcoForm() {
   }
 
   useEffect(() => {
-    if (formData.eco_type === ECO_TYPE.PRODUCT && formData.product) {
-      loadTargetData(ECO_TYPE.PRODUCT, formData.product)
-    } else if (formData.eco_type === ECO_TYPE.BOM && formData.bom) {
-      loadTargetData(ECO_TYPE.BOM, formData.bom)
+    if (ecoType === ECO_TYPE.PRODUCT && product) {
+      loadTargetData(ECO_TYPE.PRODUCT, product)
+    } else if (ecoType === ECO_TYPE.BOM && bom) {
+      loadTargetData(ECO_TYPE.BOM, bom)
+    } else {
+      setTargetData(null)
+      setProductChanges({ name: '', sale_price: '', cost_price: '' })
+      setBomChanges([])
     }
-  }, [formData.product, formData.bom, formData.eco_type])
-
-  const loadEco = async () => {
-    try {
-      const res = await getEco(id)
-      setFormData({
-        title: res.data.title,
-        eco_type: res.data.eco_type,
-        product: res.data.product?.toString() || '',
-        bom: res.data.bom?.toString() || '',
-        effective_date: res.data.effective_date || '',
-        version_update: res.data.version_update !== false,
-        status: res.data.status,
-        changes: res.data.changes || []
-      })
-    } catch (error) {
-      console.error('Failed to load ECO:', error)
-    }
-  }
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
+  }, [product, bom, ecoType, isEdit, ecoData]) // Added ecoData to dependencies to ensure initial load for edit
 
   const handleProductChangeSelect = (field, val) => {
     setProductChanges(prev => ({ ...prev, [field]: val }))
   }
 
   const generateChangesPayload = () => {
-    if (formData.eco_type === ECO_TYPE.PRODUCT && targetData) {
+    if (ecoType === ECO_TYPE.PRODUCT && targetData) {
       const payload = []
       if (productChanges.name !== targetData.name) {
         payload.push({ field_name: 'name', old_value: targetData.name, new_value: productChanges.name })
@@ -160,9 +183,9 @@ export default function EcoForm() {
       }
       return payload
     }
-    if (formData.eco_type === ECO_TYPE.BOM && targetData) {
+    if (ecoType === ECO_TYPE.BOM && targetData) {
       return bomChanges.filter(c => Number(c.old_qty) !== Number(c.new_qty)).map(c => ({
-        target_product_id: c.component_id,
+        component_product: c.component_id,
         old_quantity: c.old_qty,
         new_quantity: c.new_qty,
         change_type: 'modify'
@@ -171,13 +194,26 @@ export default function EcoForm() {
     return []
   }
 
-  const handleSave = async (submitNow = false) => {
-    setIsLoading(true)
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setIsSubmitting(true)
     try {
       const changesArr = generateChangesPayload()
       const payload = {
-        ...formData,
-        changes: changesArr
+        title,
+        eco_type: ecoType,
+        product: product || null,
+        bom: bom || null,
+        responsible_user: responsibleUser || null,
+        effective_date: effectiveDate || null,
+        version_update: versionUpdate,
+        status: ECO_STATUS.NEW, // Always create/save as NEW
+      }
+      
+      if (ecoType === ECO_TYPE.PRODUCT) {
+        payload.product_changes = changesArr
+      } else if (ecoType === ECO_TYPE.BOM) {
+        payload.bom_component_changes = changesArr
       }
       
       let savedEcoId = id;
@@ -188,23 +224,24 @@ export default function EcoForm() {
         savedEcoId = res.data.id
       }
       
-      if (submitNow && savedEcoId) {
-        await submitEco(savedEcoId)
-        navigate(`/ecos/${savedEcoId}/detail`)
-      } else {
-        navigate('/ecos')
-      }
-    } catch {
-      // Backend not ready — still navigate back to show the list
       navigate('/ecos')
+    } catch (error) {
+      console.error('Failed to save ECO:', error)
+      // Optionally show an error message to the user
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
   }
 
-  const isEditable = formData.status === ECO_STATUS.NEW
+  const isReadOnly = !canEdit || (isEdit && ecoData?.status !== ECO_STATUS.NEW)
 
-  if (!isEditable && isEdit) {
+  const availableBoms = boms.filter(b => b.product?.toString() === product)
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-muted-foreground">Loading...</div>
+  }
+
+  if (!isReadOnly && isEdit && ecoData?.status !== ECO_STATUS.NEW) {
     return (
       <div className="p-8 text-center text-muted-foreground">
         This ECO is no longer in Draft status. <Button variant="link" onClick={() => navigate(`/ecos/${id}/detail`)}>View Detail instead</Button>
@@ -213,7 +250,7 @@ export default function EcoForm() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-10">
+    <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl mx-auto pb-10">
       <PageHeader
         title={isEdit ? 'Edit ECO Draft' : 'Create New ECO'}
         description="Define changes before submitting for approval."
@@ -223,14 +260,19 @@ export default function EcoForm() {
         <CardHeader><CardTitle>1. General Information</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <FormField label="ECO Title">
-            <Input name="title" value={formData.title} onChange={handleChange} placeholder="e.g. Update Chassis Material" />
+            <Input name="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Update Chassis Material" disabled={isReadOnly || isSubmitting} />
           </FormField>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="ECO Type">
               <Select 
-                value={formData.eco_type} 
-                onValueChange={(val) => setFormData(prev => ({ ...prev, eco_type: val, product: '', bom: '' }))}
+                value={ecoType} 
+                onValueChange={(val) => {
+                  setEcoType(val)
+                  setProduct('') // Clear product when ECO type changes
+                  setBom('') // Clear BOM when ECO type changes
+                }}
+                disabled={isReadOnly || isSubmitting || isEdit} // Cannot change type on edit
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -241,15 +283,35 @@ export default function EcoForm() {
             </FormField>
 
             <FormField label="Effective Date (Optional)">
-              <Input type="date" name="effective_date" value={formData.effective_date} onChange={handleChange} />
+              <Input type="date" name="effective_date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} disabled={isReadOnly || isSubmitting} />
             </FormField>
           </div>
+
+          <FormField label="Responsible User">
+            <Select 
+              value={responsibleUser} 
+              onValueChange={setResponsibleUser} 
+              disabled={isReadOnly || isSubmitting}
+            >
+              <SelectTrigger className={!responsibleUser ? 'text-muted-foreground' : ''}>
+                <SelectValue placeholder="Select responsible user">
+                  {responsibleUser ? (users.find(u => u.id.toString() === responsibleUser)?.username || `User ${responsibleUser}`) : 'Select responsible user'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={u.id.toString()}>{u.username}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
           
           <div className="flex items-center space-x-2 pt-2">
             <Checkbox 
               id="v-flip" 
-              checked={formData.version_update} 
-              onCheckedChange={(c) => setFormData(p => ({ ...p, version_update: c === true }))} 
+              checked={versionUpdate} 
+              onCheckedChange={setVersionUpdate} 
+              disabled={isReadOnly || isSubmitting}
             />
             <label htmlFor="v-flip" className="text-sm font-medium leading-none">
               Increment Version on Apply
@@ -262,30 +324,47 @@ export default function EcoForm() {
         <CardHeader><CardTitle>2. Target Selection</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Product">
-            <Select 
-              value={formData.product} 
-              onValueChange={(val) => setFormData(prev => ({ ...prev, product: val }))}
-              disabled={!products.length}
-            >
-              <SelectTrigger><SelectValue placeholder="Select Product..." /></SelectTrigger>
-              <SelectContent>
-                {products.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormField>
-
-          {formData.eco_type === ECO_TYPE.BOM && (
-            <FormField label="Bill of Materials">
+            <div className="flex items-center gap-2">
               <Select 
-                value={formData.bom} 
-                onValueChange={(val) => setFormData(prev => ({ ...prev, bom: val }))}
-                disabled={!formData.product || !boms.length}
+                value={product} 
+                onValueChange={(val) => {
+                  setProduct(val)
+                  if (ecoType === ECO_TYPE.BOM) setBom('') // Clear BOM selection if product changes
+                }}
+                disabled={isReadOnly || isSubmitting || !products.length || (isEdit && ecoType === ECO_TYPE.PRODUCT)}
               >
-                <SelectTrigger><SelectValue placeholder="Select BoM..." /></SelectTrigger>
+                <SelectTrigger className="flex-1"><SelectValue placeholder="Select Product..." /></SelectTrigger>
                 <SelectContent>
-                  {boms.map(b => <SelectItem key={b.id} value={b.id.toString()}>Version {b.version}</SelectItem>)}
+                  {products.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {product && (
+                <Button variant="outline" asChild size="sm">
+                  <Link to={`/products/${product}`} target="_blank">Open Product</Link>
+                </Button>
+              )}
+            </div>
+          </FormField>
+
+          {ecoType === ECO_TYPE.BOM && (
+            <FormField label="Bill of Materials">
+              <div className="flex items-center gap-2">
+                <Select 
+                  value={bom} 
+                  onValueChange={setBom}
+                  disabled={isReadOnly || isSubmitting || !product || !availableBoms.length || isEdit}
+                >
+                  <SelectTrigger className="flex-1"><SelectValue placeholder={product ? "Select BoM..." : "Select Product first"} /></SelectTrigger>
+                  <SelectContent>
+                    {availableBoms.map(b => <SelectItem key={b.id} value={b.id.toString()}>Version {b.version} ({b.reference})</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {bom && (
+                  <Button variant="outline" asChild size="sm">
+                    <Link to={`/boms/${bom}`} target="_blank">Open BoM</Link>
+                  </Button>
+                )}
+              </div>
             </FormField>
           )}
         </CardContent>
@@ -295,12 +374,13 @@ export default function EcoForm() {
         <Card>
           <CardHeader><CardTitle>3. Proposed Changes</CardTitle></CardHeader>
           <CardContent>
-            {formData.eco_type === ECO_TYPE.PRODUCT ? (
+            {ecoType === ECO_TYPE.PRODUCT ? (
                <div className="space-y-4">
                  <FormField label="Product Name">
                     <Input 
                       value={productChanges.name} 
                       onChange={(e) => handleProductChangeSelect('name', e.target.value)} 
+                      disabled={isReadOnly || isSubmitting}
                     />
                  </FormField>
                  <div className="grid grid-cols-2 gap-4">
@@ -309,6 +389,7 @@ export default function EcoForm() {
                         type="number"
                         value={productChanges.sale_price} 
                         onChange={(e) => handleProductChangeSelect('sale_price', e.target.value)} 
+                        disabled={isReadOnly || isSubmitting}
                       />
                    </FormField>
                    <FormField label="Cost Price">
@@ -316,6 +397,7 @@ export default function EcoForm() {
                         type="number"
                         value={productChanges.cost_price} 
                         onChange={(e) => handleProductChangeSelect('cost_price', e.target.value)} 
+                        disabled={isReadOnly || isSubmitting}
                       />
                    </FormField>
                  </div>
@@ -340,6 +422,7 @@ export default function EcoForm() {
                             return n
                           })
                         }} 
+                        disabled={isReadOnly || isSubmitting}
                       />
                     </div>
                  ))}
@@ -350,17 +433,28 @@ export default function EcoForm() {
         </Card>
       )}
 
-      <div className="flex items-center justify-end gap-3 mt-8 border-t pt-4">
-        <Button variant="outline" onClick={() => navigate('/ecos')} disabled={isLoading}>
-          Cancel
-        </Button>
-        <Button variant="secondary" onClick={() => handleSave(false)} disabled={isLoading || !formData.title}>
-          Save Default
-        </Button>
-        <Button onClick={() => handleSave(true)} disabled={isLoading || !formData.title || (!formData.product && !formData.bom)}>
-          Submit for Approval
-        </Button>
-      </div>
-    </div>
+      {!isReadOnly && (
+        <div className="flex items-center justify-end gap-3 mt-8 border-t pt-4">
+          <Button variant="outline" onClick={() => navigate('/ecos')} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting || !title || (!product && !bom)}>
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save
+          </Button>
+          {!isEdit && (
+            <Button type="button" variant="default" className="bg-green-600 hover:bg-green-700 text-white" disabled={isSubmitting || !title || (!product && !bom)} onClick={async (e) => {
+              // Submit and then go to detail page to start the approval flow
+              e.preventDefault()
+              // Just use the regular submit, user will do "Start" on Details page. 
+              // Or if we want to mimic start, let's call it "Save & View"
+              await handleSubmit(e)
+            }}>
+              Start
+            </Button>
+          )}
+        </div>
+      )}
+    </form>
   )
 }

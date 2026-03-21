@@ -214,7 +214,7 @@ export default function StageSettings() {
     setSaving(true)
     try {
       await addStageApprover(selectedStage.id, {
-        user_id: selectedUserId,
+        user: selectedUserId,
         category: approverCategory,
       })
       setAddApproverDialog(false)
@@ -242,7 +242,7 @@ export default function StageSettings() {
 
   // Filter out users already added as approvers
   const availableUsers = allUsers.filter(
-    (u) => !approvers.some((a) => a.user_id === u.id)
+    (u) => !approvers.some((a) => (a.user || a.user_id) === u.id)
   )
 
   return (
@@ -293,7 +293,7 @@ export default function StageSettings() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Seq: {stage.sequence} &middot;{' '}
-                          {stage.approver_count ?? '?'} approvers
+                          {stage.approvers ? stage.approvers.length : (stage.approver_count ?? '?')} approvers
                         </p>
                       </div>
                       <Switch

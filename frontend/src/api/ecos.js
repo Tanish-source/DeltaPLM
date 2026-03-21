@@ -39,3 +39,8 @@ export const validateEco = (id) => {
 export const getEcoDiff = (id) => {
   return api.get(`/ecos/${id}/diff/`);
 };
+
+export const applyEco = (id) => {
+  return api.post(`/ecos/${id}/apply/`);
+};
+

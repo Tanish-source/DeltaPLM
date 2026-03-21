@@ -14,6 +14,7 @@ import EcoDetail from '@/pages/eco/EcoDetail'
 import StageSettings from '@/pages/stages/StageSettings'
 import ComingSoon from '@/pages/ComingSoon'
 import { ROLES } from '@/lib/constants'
+import { Test } from '@/pages/Test'
 
 function App() {
   return (
@@ -21,7 +22,7 @@ function App() {
       {/* ── Public Routes ──────────────────────────────── */}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
-
+      <Route path="/test" element ={<Test />} />
       {/* ── Protected Routes (wrapped in AppLayout) ────── */}
       <Route
         element={

@@ -57,10 +57,10 @@ class CurrentUserView(APIView):
 
 class UserListView(generics.ListAPIView):
     """
-    Admin-only endpoint to list all users.
+    Endpoint to list all users, viewable by any authenticated user for assigning tasks.
     """
     queryset = User.objects.all().order_by('username')
-    permission_classes = (IsAuthenticated, IsAdmin)
+    permission_classes = (IsAuthenticated,)
     serializer_class = UserDetailSerializer
 
 
