@@ -24,7 +24,8 @@ export default function ProductForm() {
   })
   
   const [productData, setProductData] = useState(null)
-  const [attachments, setAttachments] = useState([{ name: 'spec_sheet.pdf', size: '2.4 MB' }]) // Mock attachments
+  const [attachments, setAttachments] = useState([])
+  const [newFiles, setNewFiles] = useState([])
   
   const [isLoading, setIsLoading] = useState(isEditing)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -41,6 +42,7 @@ export default function ProductForm() {
             sale_price: data.sale_price || '',
             cost_price: data.cost_price || '',
           })
+          setAttachments(data.attachments || [])
         } catch (err) {
           setError('Failed to load product details.')
         } finally {
@@ -67,17 +69,23 @@ export default function ProductForm() {
 
     setIsSubmitting(true)
     try {
-      const payload = {
-        name: form.name,
-        sale_price: parseFloat(form.sale_price),
-        cost_price: parseFloat(form.cost_price),
-      }
-      
       if (isEditing) {
-        await updateProduct(id, payload)
-      } else {
-        await createProduct(payload)
+        // Read-only, no update allowed
+        navigate('/products')
+        return
       }
+
+      const formData = new FormData()
+      formData.append('name', form.name)
+      formData.append('sale_price', form.sale_price)
+      formData.append('cost_price', form.cost_price)
+      formData.append('is_active', 'true')
+      
+      newFiles.forEach((file) => {
+        formData.append('attachments', file)
+      })
+
+      await createProduct(formData)
       navigate('/products')
     } catch (err) {
       setError('Failed to save product. Please try again.')
@@ -86,8 +94,14 @@ export default function ProductForm() {
     }
   }
   
-  const removeAttachment = (index) => {
-    setAttachments(attachments.filter((_, i) => i !== index))
+  const handleFileChange = (e) => {
+    if (e.target.files) {
+      setNewFiles([...newFiles, ...Array.from(e.target.files)])
+    }
+  }
+
+  const removeNewFile = (index) => {
+    setNewFiles(newFiles.filter((_, i) => i !== index))
   }
 
   if (isLoading) {
@@ -98,9 +112,8 @@ export default function ProductForm() {
     )
   }
 
-  // If archived, the page is read-only even if the user is Engineering/Admin
-  const isArchived = productData?.is_active === false
-  const isReadOnly = !canEdit || isArchived
+  // The view should be strictly read-only if it's an existing item
+  const isReadOnly = isEditing
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -112,13 +125,6 @@ export default function ProductForm() {
           title={isEditing ? (isReadOnly ? 'View Product' : 'Edit Product') : 'Create Product'} 
         />
       </div>
-
-      {isArchived && (
-        <div className="rounded-lg bg-yellow-100 p-4 text-sm text-yellow-800 flex items-center gap-2 dark:bg-yellow-900/30 dark:text-yellow-400">
-          <AlertCircle className="h-4 w-4" />
-          <span>This product is archived and cannot be edited. Viewing in read-only mode.</span>
-        </div>
-      )}
 
       <form onSubmit={handleSubmit}>
         <Card>
@@ -189,35 +195,56 @@ export default function ProductForm() {
               <label className="text-sm font-semibold">Attachments</label>
               
               {!isReadOnly && (
-                <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-muted/50 transition-colors">
+                <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center text-center relative cursor-pointer hover:bg-muted/50 transition-colors">
+                  <Input 
+                    type="file" 
+                    multiple 
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                  />
                   <UploadCloud className="h-8 w-8 text-muted-foreground mb-2" />
                   <p className="text-sm font-medium">Drop files here or click to upload</p>
                   <p className="text-xs text-muted-foreground mt-1">PNG, JPG, PDF up to 10MB</p>
                 </div>
               )}
 
-              {attachments.length > 0 && (
+              {(attachments.length > 0 || newFiles.length > 0) && (
                 <div className="space-y-2 mt-4">
                   {attachments.map((file, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 border rounded-md bg-secondary/30">
+                    <div key={`existing-${idx}`} className="flex items-center justify-between p-3 border rounded-md bg-secondary/30">
+                      <div className="flex items-center gap-3">
+                        <File className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <a 
+                            href={file.file} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+                          >
+                            {file.name}
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {newFiles.map((file, idx) => (
+                    <div key={`new-${idx}`} className="flex items-center justify-between p-3 border rounded-md bg-secondary/30 border-primary/20">
                       <div className="flex items-center gap-3">
                         <File className="h-4 w-4 text-muted-foreground" />
                         <div>
                           <p className="text-sm font-medium">{file.name}</p>
-                          <p className="text-xs text-muted-foreground">{file.size}</p>
+                          <p className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                         </div>
                       </div>
-                      {!isReadOnly && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeAttachment(idx)}
-                          type="button"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeNewFile(idx)}
+                        type="button"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>

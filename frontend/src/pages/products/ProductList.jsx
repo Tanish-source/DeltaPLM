@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getProducts, archiveProduct } from '@/api/products'
+import { getProducts, archiveProduct, restoreProduct } from '@/api/products'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROLES } from '@/lib/constants'
 import PageHeader from '@/components/shared/PageHeader'
 import DataTable from '@/components/shared/DataTable'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Plus, Eye, Pencil, Archive } from 'lucide-react'
+import { Plus, Eye, Pencil, Archive, ArchiveRestore } from 'lucide-react'
 
 export default function ProductList() {
   const { hasRole } = useAuth()
@@ -53,6 +53,18 @@ export default function ProductList() {
     }
   }
 
+  const handleRestore = async (e, id) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to restore this product?')) return
+    
+    try {
+      await restoreProduct(id)
+      fetchProducts(activeTab === 'active', searchQuery)
+    } catch (error) {
+      console.error('Failed to restore product', error)
+    }
+  }
+
   const columns = [
     { key: 'name', label: 'Name', render: (row) => <span className="font-medium">{row.name}</span> },
     { key: 'sale_price', label: 'Sale Price', render: (row) => `$${Number(row.sale_price).toFixed(2)}` },
@@ -78,26 +90,27 @@ export default function ProductList() {
       </Button>
       
       {canEdit && activeTab === 'active' && (
-        <>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            title="Edit Product"
-            onClick={() => navigate(`/products/${row.id}`)}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-            title="Archive Product"
-            onClick={(e) => handleArchive(e, row.id)}
-          >
-            <Archive className="h-4 w-4" />
-          </Button>
-        </>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          title="Archive Product"
+          onClick={(e) => handleArchive(e, row.id)}
+        >
+          <Archive className="h-4 w-4" />
+        </Button>
+      )}
+
+      {canEdit && activeTab === 'archived' && (
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 text-muted-foreground hover:text-green-600"
+          title="Restore Product"
+          onClick={(e) => handleRestore(e, row.id)}
+        >
+          <ArchiveRestore className="h-4 w-4" />
+        </Button>
       )}
     </div>
   )
@@ -115,13 +128,17 @@ export default function ProductList() {
         )}
       </PageHeader>
 
-      <Tabs defaultValue="active" onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="archived">Archived</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="active" className="m-0">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between">
+        <Tabs defaultValue="active" onValueChange={setActiveTab} className="w-auto">
+          <TabsList>
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="archived">Archived</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      
+      <Tabs defaultValue={activeTab} value={activeTab} onValueChange={setActiveTab}>
+        <TabsContent value="active" className="m-0 mt-4">
           <DataTable
             data={products}
             columns={columns}

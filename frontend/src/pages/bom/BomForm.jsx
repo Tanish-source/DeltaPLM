@@ -43,11 +43,31 @@ export default function BomForm() {
           setBomData(data)
           setProduct(data.product?.id?.toString() || data.product?.toString() || '')
           setComponents(data.components || [])
-          setOperations(data.operations || [])
+          setOperations(data.operations?.map(op => {
+            let durStr = op.duration || ''
+            let d = ''
+            let timeStr = durStr
+            if (durStr.includes(' ')) {
+              const parts = durStr.split(' ')
+              d = parts[0]
+              timeStr = parts[1] || ''
+            }
+            const timeParts = timeStr.split(':')
+            const h = timeParts[0] ? parseInt(timeParts[0], 10).toString() : ''
+            const m = timeParts[1] ? parseInt(timeParts[1], 10).toString() : ''
+            return {
+              id: op.id,
+              name: op.name,
+              work_center: op.work_center,
+              d: d === '0' ? '' : d,
+              h: h === '0' ? '' : h,
+              m: m === '0' ? '' : m
+            }
+          }) || [])
         } else {
           // Initialize empty row for new BoM
           setComponents([{ component_product: '', quantity: '' }])
-          setOperations([{ operation_name: '', duration: '', work_center: '' }])
+          setOperations([{ name: '', d: '', h: '', m: '', work_center: '' }])
         }
       } catch (err) {
         setError('Failed to load data.')
@@ -73,7 +93,7 @@ export default function BomForm() {
 
   // Operation Actions
   const addOperation = () => {
-    setOperations([...operations, { operation_name: '', duration: '', work_center: '' }])
+    setOperations([...operations, { name: '', d: '', h: '', m: '', work_center: '' }])
   }
   const updateOperation = (index, field, value) => {
     const newOps = [...operations]
@@ -95,7 +115,7 @@ export default function BomForm() {
 
     // Clean data before sending (filter out totally empty rows)
     const validComps = components.filter(c => c.component_product && c.quantity)
-    const validOps = operations.filter(o => o.operation_name && o.duration)
+    const validOps = operations.filter(o => o.name && (parseInt(o.d||'0',10)>0 || parseInt(o.h||'0',10)>0 || parseInt(o.m||'0',10)>0))
 
     setIsSubmitting(true)
     try {
@@ -105,7 +125,16 @@ export default function BomForm() {
           component_product: parseInt(c.component_product, 10),
           quantity: parseInt(c.quantity, 10)
         })),
-        operations: validOps
+        operations: validOps.map(op => {
+          const days = parseInt(op.d || '0', 10)
+          const hrs = parseInt(op.h || '0', 10).toString().padStart(2, '0')
+          const mins = parseInt(op.m || '0', 10).toString().padStart(2, '0')
+          return {
+            name: op.name,
+            duration: days > 0 ? `${days} ${hrs}:${mins}:00` : `${hrs}:${mins}:00`,
+            work_center: op.work_center
+          }
+        })
       }
       
       if (isEditing) {
@@ -121,9 +150,10 @@ export default function BomForm() {
     }
   }
 
-  // If archived, read-only mode
+  // If archived, we can still show the badge
   const isArchived = bomData?.is_active === false
-  const isReadOnly = !canEdit || isArchived
+  // All existing BoMs are read-only
+  const isReadOnly = isEditing
 
   if (isLoading) {
     return (
@@ -171,11 +201,13 @@ export default function BomForm() {
                 disabled={isReadOnly || isSubmitting || isEditing}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a product..." />
+                  <SelectValue placeholder="Select a product...">
+                    {product ? (products.find(p => p.id.toString() === product)?.name || `Product ${product}`) : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {products.map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={p.id.toString()}>{p.name || `Un-named Product (${p.id})`}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -213,11 +245,13 @@ export default function BomForm() {
                         disabled={isReadOnly || isSubmitting}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select component..." />
+                          <SelectValue placeholder="Select component...">
+                            {comp.component_product ? (products.find(p => p.id.toString() === comp.component_product.toString())?.name || `Product ${comp.component_product}`) : undefined}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {products.filter(p => p.id.toString() !== product).map(p => (
-                            <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                            <SelectItem key={p.id} value={p.id.toString()}>{p.name || `Un-named Product (${p.id})`}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -269,8 +303,8 @@ export default function BomForm() {
               <div className="space-y-3">
                 <div className="grid grid-cols-12 gap-3 text-sm font-medium text-muted-foreground px-1 uppercase tracking-wider text-xs">
                   <div className="col-span-5">Operation Name</div>
-                  <div className="col-span-3">Duration (e.g. 01:30:00)</div>
-                  <div className="col-span-3">Work Center</div>
+                  <div className="col-span-4">Duration (d / h / m)</div>
+                  <div className="col-span-2">Work Center</div>
                   <div className="col-span-1"></div>
                 </div>
                 {operations.map((op, idx) => (
@@ -278,20 +312,46 @@ export default function BomForm() {
                     <div className="col-span-5">
                       <Input 
                         placeholder="Assembly"
-                        value={op.operation_name}
-                        onChange={(e) => updateOperation(idx, 'operation_name', e.target.value)}
+                        value={op.name}
+                        onChange={(e) => updateOperation(idx, 'name', e.target.value)}
                         disabled={isReadOnly || isSubmitting}
                       />
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-4 flex items-center gap-1.5">
                       <Input 
-                        placeholder="hh:mm:ss"
-                        value={op.duration}
-                        onChange={(e) => updateOperation(idx, 'duration', e.target.value)}
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        className="w-14 h-9 px-2 text-center"
+                        value={op.d}
+                        onChange={(e) => updateOperation(idx, 'd', e.target.value)}
                         disabled={isReadOnly || isSubmitting}
                       />
+                      <span className="text-xs text-muted-foreground mr-1">d</span>
+                      <Input 
+                        type="number"
+                        min="0"
+                        max="23"
+                        placeholder="0"
+                        className="w-14 h-9 px-2 text-center"
+                        value={op.h}
+                        onChange={(e) => updateOperation(idx, 'h', e.target.value)}
+                        disabled={isReadOnly || isSubmitting}
+                      />
+                      <span className="text-xs text-muted-foreground mr-1">h</span>
+                      <Input 
+                        type="number"
+                        min="0"
+                        max="59"
+                        placeholder="0"
+                        className="w-14 h-9 px-2 text-center"
+                        value={op.m}
+                        onChange={(e) => updateOperation(idx, 'm', e.target.value)}
+                        disabled={isReadOnly || isSubmitting}
+                      />
+                      <span className="text-xs text-muted-foreground">m</span>
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       <Input 
                         placeholder="Line 1"
                         value={op.work_center}

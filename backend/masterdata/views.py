@@ -39,11 +39,19 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrEngineeringWriteOrReadOnly]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['is_active', 'parent']
     search_fields = ['name']
     ordering_fields = ['name', 'created_at', 'version']
     
+    def perform_create(self, serializer):
+        from .models import ProductAttachment
+        product = serializer.save()
+        files = self.request.FILES.getlist('attachments')
+        for f in files:
+            ProductAttachment.objects.create(product=product, file=f, name=f.name)
+            
     @action(detail=True, methods=['get'])
     def versions(self, request, pk=None):
         """Returns all versions of a specific product family."""
@@ -63,6 +71,7 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
     queryset = BillOfMaterials.objects.all()
     serializer_class = BillOfMaterialsSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrEngineeringWriteOrReadOnly]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['is_active', 'product']
     search_fields = ['product__name']

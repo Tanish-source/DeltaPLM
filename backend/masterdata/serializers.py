@@ -17,7 +17,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'sale_price', 'cost_price', 'version', 
             'is_active', 'parent', 'created_at', 'updated_at', 'attachments'
         ]
-        read_only_fields = ['version', 'is_active', 'parent', 'created_at', 'updated_at']
+        read_only_fields = ['version', 'parent', 'created_at', 'updated_at']
 
 
 class BomComponentSerializer(serializers.ModelSerializer):
@@ -35,8 +35,8 @@ class BomOperationSerializer(serializers.ModelSerializer):
 
 
 class BillOfMaterialsSerializer(serializers.ModelSerializer):
-    components = BomComponentSerializer(many=True, read_only=True)
-    operations = BomOperationSerializer(many=True, read_only=True)
+    components = BomComponentSerializer(many=True, required=False)
+    operations = BomOperationSerializer(many=True, required=False)
     product_name = serializers.CharField(source='product.name', read_only=True)
 
     class Meta:
@@ -45,4 +45,37 @@ class BillOfMaterialsSerializer(serializers.ModelSerializer):
             'id', 'product', 'product_name', 'version', 'is_active', 
             'created_at', 'updated_at', 'components', 'operations'
         ]
-        read_only_fields = ['version', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['version', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        components_data = validated_data.pop('components', [])
+        operations_data = validated_data.pop('operations', [])
+        bom = BillOfMaterials.objects.create(**validated_data)
+        
+        for comp in components_data:
+            BomComponent.objects.create(bom=bom, **comp)
+        
+        for op in operations_data:
+            BomOperation.objects.create(bom=bom, **op)
+            
+        return bom
+
+    def update(self, instance, validated_data):
+        components_data = validated_data.pop('components', None)
+        operations_data = validated_data.pop('operations', None)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        if components_data is not None:
+            instance.components.all().delete()
+            for comp in components_data:
+                BomComponent.objects.create(bom=instance, **comp)
+                
+        if operations_data is not None:
+            instance.operations.all().delete()
+            for op in operations_data:
+                BomOperation.objects.create(bom=instance, **op)
+                
+        return instance

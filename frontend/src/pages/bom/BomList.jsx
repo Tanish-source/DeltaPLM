@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getBoms, archiveBom } from '@/api/boms'
+import { getBoms, archiveBom, restoreBom } from '@/api/boms'
 import { getProducts } from '@/api/products'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROLES } from '@/lib/constants'
@@ -8,7 +8,7 @@ import PageHeader from '@/components/shared/PageHeader'
 import DataTable from '@/components/shared/DataTable'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Plus, Eye, Pencil, Archive } from 'lucide-react'
+import { Plus, Eye, Pencil, Archive, ArchiveRestore } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export default function BomList() {
@@ -73,6 +73,18 @@ export default function BomList() {
     }
   }
 
+  const handleRestore = async (e, id) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to restore this Bill of Materials?')) return
+    
+    try {
+      await restoreBom(id)
+      fetchBoms(activeTab === 'active', searchQuery, selectedProduct)
+    } catch (error) {
+      console.error('Failed to restore BoM', error)
+    }
+  }
+
   const columns = [
     { key: 'product_name', label: 'Product', render: (row) => <span className="font-medium">{row.product_name || row.product?.name || 'Unknown'}</span> },
     { key: 'version', label: 'Version', render: (row) => `v${row.version}` },
@@ -98,26 +110,27 @@ export default function BomList() {
       </Button>
       
       {canEdit && activeTab === 'active' && (
-        <>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            title="Edit BoM"
-            onClick={() => navigate(`/boms/${row.id}`)}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-            title="Archive BoM"
-            onClick={(e) => handleArchive(e, row.id)}
-          >
-            <Archive className="h-4 w-4" />
-          </Button>
-        </>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          title="Archive BoM"
+          onClick={(e) => handleArchive(e, row.id)}
+        >
+          <Archive className="h-4 w-4" />
+        </Button>
+      )}
+
+      {canEdit && activeTab === 'archived' && (
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 text-muted-foreground hover:text-green-600"
+          title="Restore BoM"
+          onClick={(e) => handleRestore(e, row.id)}
+        >
+          <ArchiveRestore className="h-4 w-4" />
+        </Button>
       )}
     </div>
   )
@@ -146,7 +159,9 @@ export default function BomList() {
         <div className="w-[200px]">
           <Select value={selectedProduct} onValueChange={setSelectedProduct}>
             <SelectTrigger>
-              <SelectValue placeholder="All Products" />
+              <SelectValue placeholder="All Products">
+                {selectedProduct !== 'all' ? (products.find(p => p.id.toString() === selectedProduct)?.name || selectedProduct) : "All Products"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Products</SelectItem>
