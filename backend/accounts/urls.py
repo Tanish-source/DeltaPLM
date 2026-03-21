@@ -7,6 +7,7 @@ urlpatterns = [
     path('register/', views.RegisterView.as_view(), name='auth_register'),
     path('login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('forgot-password/', views.ForgotPasswordView.as_view(), name='auth_forgot_password'),
     path('me/', views.CurrentUserView.as_view(), name='auth_me'),
     
     # User management / Admin endpoints

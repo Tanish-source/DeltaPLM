@@ -23,6 +23,7 @@ export default function BomForm() {
   const [bomData, setBomData] = useState(null)
   
   const [product, setProduct] = useState('')
+  const [drawer, setDrawer] = useState('')
   const [components, setComponents] = useState([])
   const [operations, setOperations] = useState([])
   
@@ -42,6 +43,7 @@ export default function BomForm() {
           const { data } = await getBom(id)
           setBomData(data)
           setProduct(data.product?.id?.toString() || data.product?.toString() || '')
+          setDrawer(data.drawer || '')
           setComponents(data.components || [])
           setOperations(data.operations?.map(op => {
             let durStr = op.duration || ''
@@ -121,6 +123,7 @@ export default function BomForm() {
     try {
       const payload = {
         product: parseInt(product, 10),
+        drawer: drawer.trim(),
         components: validComps.map(c => ({
           component_product: parseInt(c.component_product, 10),
           quantity: parseInt(c.quantity, 10)
@@ -172,6 +175,12 @@ export default function BomForm() {
         <PageHeader 
           title={isEditing ? (isReadOnly ? 'View Bill of Materials' : 'Edit Bill of Materials') : 'Create Bill of Materials'} 
         />
+        {isEditing && bomData?.reference && (
+          <div className="flex items-center gap-2">
+            <span className="rounded-md bg-muted px-2 py-1 font-mono text-sm">{bomData.reference}</span>
+            <span className="rounded-md bg-primary/10 px-2 py-1 text-sm font-medium text-primary">v{bomData.version}</span>
+          </div>
+        )}
       </div>
 
       {isArchived && (
@@ -212,6 +221,17 @@ export default function BomForm() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">The product that this Bill of Materials belongs to.</p>
+            </div>
+            
+            <div className="space-y-2 max-w-md mt-6">
+              <label className="text-sm font-semibold">Drawer / Reference Lead</label>
+              <Input 
+                value={drawer} 
+                onChange={(e) => setDrawer(e.target.value)} 
+                disabled={isReadOnly || isSubmitting}
+                placeholder="Name or department of drafter"
+              />
+              <p className="text-xs text-muted-foreground">Optional person or team who drew/drafted this BoM.</p>
             </div>
           </CardContent>
         </Card>

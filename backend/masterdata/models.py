@@ -35,6 +35,8 @@ class ProductAttachment(models.Model):
 
 class BillOfMaterials(models.Model):
     product = models.ForeignKey(Product, related_name='boms', on_delete=models.CASCADE)
+    reference = models.CharField(max_length=20, unique=True, blank=True, editable=False)
+    drawer = models.CharField(max_length=100, blank=True, help_text="Person or team who drew/drafted this BoM")
     version = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -44,8 +46,15 @@ class BillOfMaterials(models.Model):
         ordering = ['-id']
         verbose_name_plural = 'Bills of Materials'
 
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            last_bom = BillOfMaterials.objects.order_by('-id').first()
+            next_num = (last_bom.id + 1) if last_bom else 1
+            self.reference = f"BOM-{next_num:06d}"
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"BoM for {self.product.name} (v{self.version})"
+        return f"{self.reference} — {self.product.name} (v{self.version})"
 
 
 class BomComponent(models.Model):

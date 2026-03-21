@@ -86,6 +86,7 @@ export default function BomList() {
   }
 
   const columns = [
+    { key: 'reference', label: 'Reference', render: (row) => <span className="font-mono text-xs">{row.reference || '—'}</span> },
     { key: 'product_name', label: 'Product', render: (row) => <span className="font-medium">{row.product_name || row.product?.name || 'Unknown'}</span> },
     { key: 'version', label: 'Version', render: (row) => `v${row.version}` },
     { key: 'components', label: 'Components', render: (row) => `${row.components?.length || 0} items` },

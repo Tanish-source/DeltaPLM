@@ -7,7 +7,8 @@ from django.contrib.auth import get_user_model
 from .serializers import (
     UserRegistrationSerializer, 
     UserDetailSerializer, 
-    UserRoleUpdateSerializer
+    UserRoleUpdateSerializer,
+    ForgotPasswordSerializer
 )
 from .permissions import IsAdmin
 
@@ -16,11 +17,31 @@ User = get_user_model()
 
 class RegisterView(generics.CreateAPIView):
     """
-    API endpoint to register a new user. Role is forced to ENGINEERING internally.
+    API endpoint to register a new user.
+    Enforces: username 6-12 chars unique, email unique,
+    password >= 8 chars with lowercase, uppercase, special char.
     """
     queryset = User.objects.all()
     permission_classes = (AllowAny,)
     serializer_class = UserRegistrationSerializer
+
+
+class ForgotPasswordView(APIView):
+    """
+    Simulated forgot-password endpoint.
+    Validates email exists, returns success (no real email sent in hackathon demo).
+    """
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            # In a real app, send a password reset email here
+            return Response(
+                {'message': 'Password reset instructions have been sent to your email.'},
+                status=status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CurrentUserView(APIView):

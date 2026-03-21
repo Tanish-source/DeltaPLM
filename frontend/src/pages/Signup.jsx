@@ -47,9 +47,9 @@ export default function Signup() {
     const newErrors = {}
 
     if (!form.username.trim()) {
-      newErrors.username = 'Username is required.'
-    } else if (form.username.length < 3) {
-      newErrors.username = 'Username must be at least 3 characters.'
+      newErrors.username = 'Login ID is required.'
+    } else if (form.username.length < 6 || form.username.length > 12) {
+      newErrors.username = 'Login ID must be between 6 and 12 characters.'
     }
 
     if (!form.email.trim()) {
@@ -60,8 +60,16 @@ export default function Signup() {
 
     if (!form.password) {
       newErrors.password = 'Password is required.'
-    } else if (form.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters.'
+    } else {
+      if (form.password.length < 8) {
+        newErrors.password = 'Password must be at least 8 characters.'
+      } else if (!/[a-z]/.test(form.password)) {
+        newErrors.password = 'Password must contain at least one lowercase letter.'
+      } else if (!/[A-Z]/.test(form.password)) {
+        newErrors.password = 'Password must contain at least one uppercase letter.'
+      } else if (!/[!@#$%^&*(),.?":{}|<>]/.test(form.password)) {
+        newErrors.password = 'Password must contain at least one special character.'
+      }
     }
 
     if (!form.confirmPassword) {
@@ -86,6 +94,7 @@ export default function Signup() {
         username: form.username,
         email: form.email,
         password: form.password,
+        password2: form.confirmPassword,
       })
       setIsSuccess(true)
     } catch (err) {
@@ -168,13 +177,13 @@ export default function Signup() {
             {/* Username */}
             <div className="space-y-1.5">
               <label htmlFor="username" className="text-sm font-medium">
-                Username
+                Login ID <span className="text-xs text-muted-foreground">(6-12 characters)</span>
               </label>
               <Input
                 id="username"
                 name="username"
                 type="text"
-                placeholder="Choose a username"
+                placeholder="6-12 characters"
                 value={form.username}
                 onChange={handleChange}
                 disabled={isSubmitting}
@@ -217,7 +226,7 @@ export default function Signup() {
                 id="password"
                 name="password"
                 type="password"
-                placeholder="At least 6 characters"
+                placeholder="Min 8 chars, upper+lower+special"
                 value={form.password}
                 onChange={handleChange}
                 disabled={isSubmitting}

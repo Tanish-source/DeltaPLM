@@ -8,6 +8,13 @@ export const registerUser = (data) =>
   api.post('/auth/register/', data)
 
 /**
+ * Forgot password — validate email and trigger reset.
+ * Returns { message: '...' }.
+ */
+export const forgotPassword = (email) =>
+  api.post('/auth/forgot-password/', { email })
+
+/**
  * Login with username and password.
  * Returns { access, refresh } tokens.
  */
@@ -39,3 +46,4 @@ export const getUsers = () =>
  */
 export const assignRole = (userId, role) =>
   api.patch(`/auth/users/${userId}/role/`, { role })
+

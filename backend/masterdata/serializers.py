@@ -42,10 +42,10 @@ class BillOfMaterialsSerializer(serializers.ModelSerializer):
     class Meta:
         model = BillOfMaterials
         fields = [
-            'id', 'product', 'product_name', 'version', 'is_active', 
+            'id', 'product', 'product_name', 'reference', 'drawer', 'version', 'is_active', 
             'created_at', 'updated_at', 'components', 'operations'
         ]
-        read_only_fields = ['version', 'created_at', 'updated_at']
+        read_only_fields = ['reference', 'version', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         components_data = validated_data.pop('components', [])
