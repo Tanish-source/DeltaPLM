@@ -4,6 +4,25 @@ from django.db import transaction
 from audits.services import log_audit
 from audits.models import AuditLog
 
+DEFAULT_STAGES = (
+    ("New", 1),
+    ("Done", 2),
+)
+
+
+def ensure_default_stages():
+    """
+    Ensure the system always has a minimal workflow shape.
+    This keeps the hackathon app usable even on a fresh database.
+    """
+    if Stage.objects.exists():
+        return
+
+    for name, sequence in DEFAULT_STAGES:
+        stage = Stage.objects.create(name=name, sequence=sequence, is_active=True)
+        StageRule.objects.get_or_create(stage=stage, defaults={"approval_mode": StageRule.ApprovalMode.ALL})
+
+
 def seed_approvals_for_stage(eco):
     stage = eco.current_stage
     if not stage:
@@ -17,14 +36,28 @@ def seed_approvals_for_stage(eco):
             defaults={'decision': ECOApproval.Decision.PENDING}
         )
 
+
+def sync_current_stage_approvals(eco):
+    """
+    Keep ECOApproval rows aligned with the currently assigned approvers for a stage.
+    This covers the common case where approvers are configured after an ECO has
+    already entered the stage.
+    """
+    stage = eco.current_stage
+    if not stage:
+        return
+    seed_approvals_for_stage(eco)
+
 def submit_eco_to_workflow(eco, user=None):
     if eco.status != ECO.Status.NEW:
         raise ValueError("Only NEW drafts can be submitted.")
-    
+
+    ensure_default_stages()
     first_stage = Stage.objects.filter(is_active=True).order_by('sequence').first()
     if first_stage:
         eco.current_stage = first_stage
         eco.status = ECO.Status.APPROVAL
+        eco.rejected_stage = None # Clear any previous rejection
         eco.save()
         
         # Reset any old approvals before starting fresh
@@ -43,14 +76,35 @@ def submit_eco_to_workflow(eco, user=None):
     )
     return eco
 
+@transaction.atomic
 def approve_stage(eco, user, comment=""):
     if eco.status != ECO.Status.APPROVAL:
         raise ValueError("ECO is not in approval state.")
     stage = eco.current_stage
-    
-    # Check if user is a pending approver for this stage
-    approval = ECOApproval.objects.filter(eco=eco, stage=stage, user=user, decision=ECOApproval.Decision.PENDING).first()
+    if not stage:
+        raise ValueError("ECO has no current approval stage.")
+
+    if stage.approvers.count() == 0:
+        advance_to_next_stage(eco, user)
+        return eco
+
+    sync_current_stage_approvals(eco)
+
+    approval = ECOApproval.objects.filter(eco=eco, stage=stage, user=user).first()
+    stage_assignment = StageApprover.objects.filter(stage=stage, user=user).first()
+    if not approval and not stage_assignment:
+        raise ValueError("You are not assigned as an approver for this stage.")
+
     if not approval:
+        approval = ECOApproval.objects.create(
+            eco=eco,
+            stage=stage,
+            user=user,
+            decision=ECOApproval.Decision.PENDING,
+        )
+    if approval.decision == ECOApproval.Decision.APPROVED:
+        raise ValueError("You have already approved this stage.")
+    if approval.decision != ECOApproval.Decision.PENDING:
         raise ValueError("You are not a pending approver for this stage.")
     
     approval.decision = ECOApproval.Decision.APPROVED
@@ -69,20 +123,35 @@ def approve_stage(eco, user, comment=""):
     check_stage_completion(eco, user)
     return eco
 
+@transaction.atomic
 def reject_stage(eco, user, comment=""):
     if eco.status != ECO.Status.APPROVAL:
         raise ValueError("ECO is not in approval state.")
     stage = eco.current_stage
-    
-    # Record the rejection if they are an approver
+
+    sync_current_stage_approvals(eco)
+
     approval = ECOApproval.objects.filter(eco=eco, stage=stage, user=user).first()
-    if approval:
-        approval.decision = ECOApproval.Decision.REJECTED
-        approval.comment = comment
-        approval.decided_at = timezone.now()
-        approval.save()
+    stage_assignment = StageApprover.objects.filter(stage=stage, user=user).first()
+    if not approval and not stage_assignment:
+        raise ValueError("You are not assigned as an approver for this stage.")
+
+    if not approval:
+        approval = ECOApproval.objects.create(
+            eco=eco,
+            stage=stage,
+            user=user,
+            decision=ECOApproval.Decision.PENDING,
+        )
+    approval.decision = ECOApproval.Decision.REJECTED
+    approval.comment = comment
+    approval.decided_at = timezone.now()
+    approval.save()
     
-    # Send back to NEW state
+    # Capture where it was rejected before resetting
+    eco.rejected_stage = eco.current_stage
+    
+    # Rejecting returns ECO to draft
     eco.status = ECO.Status.NEW
     eco.current_stage = None
     eco.save()
@@ -97,6 +166,7 @@ def reject_stage(eco, user, comment=""):
     
     return eco
 
+@transaction.atomic
 def validate_stage(eco, user=None):
     if eco.status != ECO.Status.APPROVAL:
         raise ValueError("ECO is not in approval state.")
@@ -152,6 +222,7 @@ def advance_to_next_stage(eco, user=None):
 
     if next_stage:
         eco.current_stage = next_stage
+        eco.rejected_stage = None # Clear on advancement
         eco.save()
         seed_approvals_for_stage(eco)
         log_audit(

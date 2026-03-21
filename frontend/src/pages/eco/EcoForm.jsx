@@ -24,8 +24,8 @@ export default function EcoForm() {
   const canEdit = hasRole([ROLES.ENGINEERING, ROLES.ADMIN])
 
   const [isLoading, setIsLoading] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false) // New state for submission
-  const [ecoData, setEcoData] = useState(null) // Original ECO data if editing
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [ecoData, setEcoData] = useState(null)
 
   // Form states
   const [title, setTitle] = useState('')
@@ -41,21 +41,18 @@ export default function EcoForm() {
   const [users, setUsers] = useState([])
   const [targetData, setTargetData] = useState(null)
   
-  // Local changes editor state
   const [productChanges, setProductChanges] = useState({
     name: '',
     sale_price: '',
     cost_price: ''
   })
   
-  // BoM changes MVP: array of components with old/new
   const [bomChanges, setBomChanges] = useState([])
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        // Fetch active master data and users
         const [prodRes, bomRes, userRes] = await Promise.all([
           getProducts({ is_active: true }),
           getBoms({ is_active: true }),
@@ -76,26 +73,6 @@ export default function EcoForm() {
           setResponsibleUser(data.responsible_user?.id?.toString() || data.created_by?.id?.toString() || '')
           setEffectiveDate(data.effective_date || '')
           setVersionUpdate(data.version_update ?? true)
-
-          // Set initial changes for editing
-          if (data.eco_type === ECO_TYPE.PRODUCT && data.product_changes && data.product_changes.length > 0) {
-            const nameChange = data.product_changes.find(c => c.field_name === 'name')
-            const salePriceChange = data.product_changes.find(c => c.field_name === 'sale_price')
-            const costPriceChange = data.product_changes.find(c => c.field_name === 'cost_price')
-            setProductChanges({
-              name: nameChange ? nameChange.new_value : '',
-              sale_price: salePriceChange ? salePriceChange.new_value : '',
-              cost_price: costPriceChange ? costPriceChange.new_value : ''
-            })
-          } else if (data.eco_type === ECO_TYPE.BOM && data.bom_component_changes && data.bom_component_changes.length > 0) {
-            setBomChanges(data.bom_component_changes.map(c => ({
-              component_id: c.component_product,
-              name: c.component_product_name || `Product ${c.component_product}`,
-              old_qty: c.old_quantity,
-              new_qty: c.new_quantity,
-              change_type: 'modify'
-            })))
-          }
         }
       } catch (error) {
         console.error('Failed to fetch initial data:', error)
@@ -106,17 +83,6 @@ export default function EcoForm() {
     fetchData()
   }, [id, isEdit])
 
-  useEffect(() => {
-    if (ecoType === ECO_TYPE.BOM && product) {
-      // Filter boms based on selected product
-      // This logic is now handled by `availableBoms` getter
-    } else {
-      // if (ecoType === ECO_TYPE.BOM) {
-      //   setBom('') // Clear BOM if product is cleared or type changes from BOM
-      // }
-    }
-  }, [product, ecoType])
-
   const loadTargetData = async (type, targetId) => {
     if (!targetId) {
       setTargetData(null)
@@ -125,28 +91,52 @@ export default function EcoForm() {
     try {
       if (type === ECO_TYPE.PRODUCT) {
         const res = await getProduct(targetId)
-        setTargetData(res.data)
-        // Only set productChanges if not in edit mode or if changes haven't been loaded from ecoData
-        if (!isEdit || !ecoData?.product_changes?.length) {
-          setProductChanges({
-            name: res.data.name,
-            sale_price: res.data.sale_price || '',
-            cost_price: res.data.cost_price || ''
+        const target = res.data
+        setTargetData(target)
+        
+        const initialChanges = {
+          name: target.name || '',
+          sale_price: target.sale_price !== null && target.sale_price !== undefined ? target.sale_price : '',
+          cost_price: target.cost_price !== null && target.cost_price !== undefined ? target.cost_price : ''
+        }
+        
+        if (isEdit && ecoData?.product_changes?.length > 0) {
+          ecoData.product_changes.forEach(c => {
+             if (c.field_name === 'name') initialChanges.name = c.new_value
+             if (c.field_name === 'sale_price') initialChanges.sale_price = c.new_value
+             if (c.field_name === 'cost_price') initialChanges.cost_price = c.new_value
           })
         }
+        setProductChanges(initialChanges)
+        
       } else if (type === ECO_TYPE.BOM) {
         const res = await getBom(targetId)
-        setTargetData(res.data)
-        // Only set bomChanges if not in edit mode or if changes haven't been loaded from ecoData
-        if (!isEdit || !ecoData?.bom_component_changes?.length) {
-          setBomChanges((res.data.components || []).map(c => ({
-            component_id: c.component_product,
-            name: c.component_product_name || `Product ${c.component_product}`,
-            old_qty: c.quantity,
-            new_qty: c.quantity,
-            change_type: 'modify'
-          })))
+        const target = res.data
+        setTargetData(target)
+        
+        let initialComponents = (target.components || []).map(c => ({
+          component_id: c.component_product,
+          name: c.component_product_name || `Product ${c.component_product}`,
+          old_qty: c.quantity,
+          new_qty: c.quantity,
+          change_type: 'modify'
+        }))
+        
+        if (isEdit && ecoData?.bom_component_changes?.length > 0) {
+          const changeMap = {}
+          ecoData.bom_component_changes.forEach(c => {
+            changeMap[c.component_product.toString()] = c.new_quantity
+          })
+          
+          initialComponents = initialComponents.map(comp => {
+            const newQty = changeMap[comp.component_id.toString()]
+            if (newQty !== undefined) {
+              return { ...comp, new_qty: newQty }
+            }
+            return comp
+          })
         }
+        setBomChanges(initialComponents)
       }
     } catch (e) {
       console.error('Failed to load target:', e)
@@ -163,7 +153,7 @@ export default function EcoForm() {
       setProductChanges({ name: '', sale_price: '', cost_price: '' })
       setBomChanges([])
     }
-  }, [product, bom, ecoType, isEdit, ecoData]) // Added ecoData to dependencies to ensure initial load for edit
+  }, [product, bom, ecoType, isEdit, ecoData])
 
   const handleProductChangeSelect = (field, val) => {
     setProductChanges(prev => ({ ...prev, [field]: val }))
@@ -207,7 +197,7 @@ export default function EcoForm() {
         responsible_user: responsibleUser || null,
         effective_date: effectiveDate || null,
         version_update: versionUpdate,
-        status: ECO_STATUS.NEW, // Always create/save as NEW
+        status: ECO_STATUS.NEW,
       }
       
       if (ecoType === ECO_TYPE.PRODUCT) {
@@ -216,25 +206,21 @@ export default function EcoForm() {
         payload.bom_component_changes = changesArr
       }
       
-      let savedEcoId = id;
       if (isEdit) {
         await updateEco(id, payload)
       } else {
-        const res = await createEco(payload)
-        savedEcoId = res.data.id
+        await createEco(payload)
       }
       
       navigate('/ecos')
     } catch (error) {
       console.error('Failed to save ECO:', error)
-      // Optionally show an error message to the user
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const isReadOnly = !canEdit || (isEdit && ecoData?.status !== ECO_STATUS.NEW)
-
   const availableBoms = boms.filter(b => b.product?.toString() === product)
 
   if (isLoading) {
@@ -269,10 +255,10 @@ export default function EcoForm() {
                 value={ecoType} 
                 onValueChange={(val) => {
                   setEcoType(val)
-                  setProduct('') // Clear product when ECO type changes
-                  setBom('') // Clear BOM when ECO type changes
+                  setProduct('')
+                  setBom('')
                 }}
-                disabled={isReadOnly || isSubmitting || isEdit} // Cannot change type on edit
+                disabled={isReadOnly || isSubmitting || isEdit}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -295,7 +281,7 @@ export default function EcoForm() {
             >
               <SelectTrigger className={!responsibleUser ? 'text-muted-foreground' : ''}>
                 <SelectValue placeholder="Select responsible user">
-                  {responsibleUser ? (users.find(u => u.id.toString() === responsibleUser)?.username || `User ${responsibleUser}`) : 'Select responsible user'}
+                  {responsibleUser ? (users.find(u => u.id.toString() === responsibleUser)?.username || ecoData?.responsible_user_username || `User ${responsibleUser}`) : 'Select responsible user'}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -329,18 +315,22 @@ export default function EcoForm() {
                 value={product} 
                 onValueChange={(val) => {
                   setProduct(val)
-                  if (ecoType === ECO_TYPE.BOM) setBom('') // Clear BOM selection if product changes
+                  if (ecoType === ECO_TYPE.BOM) setBom('')
                 }}
                 disabled={isReadOnly || isSubmitting || !products.length || (isEdit && ecoType === ECO_TYPE.PRODUCT)}
               >
-                <SelectTrigger className="flex-1"><SelectValue placeholder="Select Product..." /></SelectTrigger>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select Product...">
+                    {product ? (products.find(p => p.id.toString() === product)?.name || ecoData?.product_name || `Product ${product}`) : "Select Product..."}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {products.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               {product && (
                 <Button variant="outline" asChild size="sm">
-                  <Link to={`/products/${product}`} target="_blank">Open Product</Link>
+                  <Link to={`/products/${product}`} target="_blank" rel="noopener noreferrer">Open Product</Link>
                 </Button>
               )}
             </div>
@@ -354,14 +344,18 @@ export default function EcoForm() {
                   onValueChange={setBom}
                   disabled={isReadOnly || isSubmitting || !product || !availableBoms.length || isEdit}
                 >
-                  <SelectTrigger className="flex-1"><SelectValue placeholder={product ? "Select BoM..." : "Select Product first"} /></SelectTrigger>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder={product ? "Select BoM..." : "Select Product first"}>
+                      {bom ? (boms.find(b => b.id.toString() === bom)?.reference || ecoData?.bom_reference || `BoM ${bom}`) : (product ? "Select BoM..." : "Select Product first")}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     {availableBoms.map(b => <SelectItem key={b.id} value={b.id.toString()}>Version {b.version} ({b.reference})</SelectItem>)}
                   </SelectContent>
                 </Select>
                 {bom && (
                   <Button variant="outline" asChild size="sm">
-                    <Link to={`/boms/${bom}`} target="_blank">Open BoM</Link>
+                    <Link to={`/boms/${bom}`} target="_blank" rel="noopener noreferrer">Open BoM</Link>
                   </Button>
                 )}
               </div>
@@ -435,7 +429,7 @@ export default function EcoForm() {
 
       {!isReadOnly && (
         <div className="flex items-center justify-end gap-3 mt-8 border-t pt-4">
-          <Button variant="outline" onClick={() => navigate('/ecos')} disabled={isSubmitting}>
+          <Button variant="outline" type="button" onClick={() => navigate('/ecos')} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={isSubmitting || !title || (!product && !bom)}>
@@ -444,10 +438,7 @@ export default function EcoForm() {
           </Button>
           {!isEdit && (
             <Button type="button" variant="default" className="bg-green-600 hover:bg-green-700 text-white" disabled={isSubmitting || !title || (!product && !bom)} onClick={async (e) => {
-              // Submit and then go to detail page to start the approval flow
               e.preventDefault()
-              // Just use the regular submit, user will do "Start" on Details page. 
-              // Or if we want to mimic start, let's call it "Save & View"
               await handleSubmit(e)
             }}>
               Start

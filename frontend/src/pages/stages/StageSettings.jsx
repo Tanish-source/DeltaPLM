@@ -47,31 +47,6 @@ import FormField from '@/components/shared/FormField'
 
 import { Plus, Trash2, Settings2, Users, X } from 'lucide-react'
 
-// ── Sample data (until backend Stage endpoints are ready) ────
-const SAMPLE_STAGES = [
-  { id: 1, name: 'Manager Review', sequence: 1, is_active: true, approver_count: 2 },
-  { id: 2, name: 'Quality Check', sequence: 2, is_active: true, approver_count: 1 },
-  { id: 3, name: 'Final Approval', sequence: 3, is_active: false, approver_count: 0 },
-]
-
-const SAMPLE_APPROVERS = {
-  1: [
-    { id: 1, user_id: 2, username: 'Sarah Chen', role: 'approver', category: 'required' },
-    { id: 2, user_id: 3, username: 'Mike Johnson', role: 'approver', category: 'optional' },
-  ],
-  2: [
-    { id: 3, user_id: 4, username: 'Lisa Wang', role: 'approver', category: 'required' },
-  ],
-  3: [],
-}
-
-const SAMPLE_USERS = [
-  { id: 2, username: 'Sarah Chen', role: 'approver' },
-  { id: 3, username: 'Mike Johnson', role: 'approver' },
-  { id: 4, username: 'Lisa Wang', role: 'approver' },
-  { id: 5, username: 'Alex Rivera', role: 'approver' },
-]
-
 export default function StageSettings() {
   const [stages, setStages] = useState([])
   const [selectedStage, setSelectedStage] = useState(null)
@@ -105,10 +80,11 @@ export default function StageSettings() {
     try {
       const res = await getStages()
       const stagesData = res.data?.results || res.data || []
-      const sortedStages = (Array.isArray(stagesData) && stagesData.length > 0 ? stagesData : SAMPLE_STAGES).sort((a, b) => a.sequence - b.sequence)
+      const sortedStages = (Array.isArray(stagesData) ? stagesData : []).sort((a, b) => a.sequence - b.sequence)
       setStages(sortedStages)
-    } catch {
-      setStages([...SAMPLE_STAGES])
+    } catch (error) {
+      console.error('Failed to load stages:', error)
+      setStages([])
     } finally {
       setIsLoading(false)
     }
@@ -118,25 +94,28 @@ export default function StageSettings() {
     try {
       const res = await getUsers({ role: ROLES.APPROVER })
       const usersData = res.data?.results || res.data || []
-      setAllUsers(Array.isArray(usersData) && usersData.length > 0 ? usersData : SAMPLE_USERS)
-    } catch {
-      setAllUsers([...SAMPLE_USERS])
+      setAllUsers(Array.isArray(usersData) ? usersData : [])
+    } catch (error) {
+      console.error('Failed to load users:', error)
+      setAllUsers([])
     }
   }
 
   const selectStage = async (stage) => {
     setSelectedStage(stage)
+    setApprovers([])
     try {
       const [approversRes, ruleRes] = await Promise.allSettled([
         getStageApprovers(stage.id),
         getStageRule(stage.id),
       ])
-      const approversData = approversRes.status === 'fulfilled' ? (approversRes.value.data || []) : (SAMPLE_APPROVERS[stage.id] || [])
+      const approversData = approversRes.status === 'fulfilled' ? (approversRes.value.data || []) : []
       const ruleData = ruleRes.status === 'fulfilled' ? (ruleRes.value.data || { approval_mode: 'all' }) : { approval_mode: 'all' }
       setApprovers(approversData)
       setRule(ruleData)
-    } catch {
-      setApprovers(SAMPLE_APPROVERS[stage.id] || [])
+    } catch (error) {
+      console.error('Failed to select stage:', error)
+      setApprovers([])
       setRule({ approval_mode: 'all' })
     }
   }

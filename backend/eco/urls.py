@@ -4,7 +4,7 @@ from .views import ECOViewSet, StageViewSet
 
 router = DefaultRouter()
 router.register(r'ecos', ECOViewSet)
-router.register(r'stages', StageViewSet)
+router.register(r'stages', StageViewSet, basename='stage')
 
 urlpatterns = [
     path('', include(router.urls)),

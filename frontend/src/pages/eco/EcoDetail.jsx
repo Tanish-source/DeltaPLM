@@ -14,7 +14,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   ECO_STATUS,
   ECO_TYPE_LABELS,
-  ACCESS,
   ROLES,
 } from '@/lib/constants'
 
@@ -56,91 +55,6 @@ import {
   Layers,
 } from 'lucide-react'
 
-// ── Sample data (until backend ECO endpoints are ready) ─────────
-const SAMPLE_ECOS = {
-  1: {
-    id: 1, title: 'Price Update Q4', eco_type: 'product', product: 101,
-    product_name: 'iPhone 17 Pro', status: 'approval', created_by: 1,
-    created_by_name: 'John Doe', created_at: '2026-03-18T10:00:00Z',
-    effective_date: '2026-04-01', version_update: true, current_stage: 1,
-    current_stage_approvers: [
-      { id: 1, user_id: 2, username: 'Sarah Chen', category: 'required', decision: 'approved', decided_at: '2026-03-19T09:00:00Z' },
-      { id: 2, user_id: 3, username: 'Mike Johnson', category: 'required', decision: 'pending', decided_at: null },
-    ],
-  },
-  2: {
-    id: 2, title: 'Component Revision', eco_type: 'bom', product: 102,
-    product_name: 'Galaxy S26', bom: 201, status: 'new', created_by: 2,
-    created_by_name: 'Sarah Chen', created_at: '2026-03-19T14:30:00Z',
-    effective_date: null, version_update: true, current_stage: null,
-    current_stage_approvers: [],
-  },
-  3: {
-    id: 3, title: 'New Assembly Line', eco_type: 'bom', product: 103,
-    product_name: 'Pixel 12', bom: 202, status: 'approved', created_by: 3,
-    created_by_name: 'Mike Johnson', created_at: '2026-03-17T09:15:00Z',
-    effective_date: '2026-03-25', version_update: true, current_stage: 2,
-    current_stage_approvers: [],
-  },
-  4: {
-    id: 4, title: 'Cost Reduction', eco_type: 'product', product: 101,
-    product_name: 'iPhone 17 Pro', status: 'applied', created_by: 1,
-    created_by_name: 'John Doe', created_at: '2026-03-15T11:00:00Z',
-    effective_date: '2026-03-20', version_update: true, new_version: 3,
-    current_stage: null, current_stage_approvers: [],
-  },
-  5: {
-    id: 5, title: 'Material Change', eco_type: 'bom', product: 102,
-    product_name: 'Galaxy S26', bom: 203, status: 'rejected', created_by: 4,
-    created_by_name: 'Lisa Wang', created_at: '2026-03-14T16:45:00Z',
-    effective_date: null, version_update: false, current_stage: 1,
-    rejected_stage: 1, current_stage_approvers: [],
-  },
-  6: {
-    id: 6, title: 'Packaging Redesign', eco_type: 'product', product: 103,
-    product_name: 'Pixel 12', status: 'new', created_by: 2,
-    created_by_name: 'Sarah Chen', created_at: '2026-03-20T08:00:00Z',
-    effective_date: null, version_update: true, current_stage: null,
-    current_stage_approvers: [],
-  },
-  7: {
-    id: 7, title: 'Connector Upgrade', eco_type: 'bom', product: 101,
-    product_name: 'iPhone 17 Pro', bom: 204, status: 'approval', created_by: 3,
-    created_by_name: 'Mike Johnson', created_at: '2026-03-16T13:20:00Z',
-    effective_date: '2026-04-10', version_update: true, current_stage: 2,
-    current_stage_approvers: [
-      { id: 3, user_id: 4, username: 'Lisa Wang', category: 'required', decision: 'pending', decided_at: null },
-    ],
-  },
-}
-
-const SAMPLE_CHANGES = {
-  1: [
-    { field_name: 'sale_price', old_value: '$500', new_value: '$545' },
-    { field_name: 'cost_price', old_value: '$340', new_value: '$360' },
-  ],
-  2: [
-    { target_product_name: 'Capacitor 10μF', old_quantity: 5, new_quantity: 8 },
-    { target_product_name: 'Resistor 1kΩ', old_quantity: 6, new_quantity: 3 },
-  ],
-  3: [
-    { target_product_name: 'USB-C Port', old_quantity: 1, new_quantity: 2 },
-  ],
-  4: [
-    { field_name: 'cost_price', old_value: '$340', new_value: '$310' },
-  ],
-  7: [
-    { target_product_name: 'Lightning Connector', old_quantity: 1, new_quantity: 0 },
-    { target_product_name: 'USB-C Connector', old_quantity: 0, new_quantity: 1 },
-  ],
-}
-
-const SAMPLE_STAGES = [
-  { id: 1, name: 'Manager Review', sequence: 1, is_active: true },
-  { id: 2, name: 'Quality Check', sequence: 2, is_active: true },
-  { id: 3, name: 'Final Approval', sequence: 3, is_active: true },
-]
-
 export default function EcoDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -151,6 +65,7 @@ export default function EcoDetail() {
   const [stages, setStages] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   // Dialog state for approve / reject / apply
   const [commentDialog, setCommentDialog] = useState({ open: false, action: null })
@@ -170,7 +85,7 @@ export default function EcoDetail() {
       if (ecoRes.status === 'fulfilled' && ecoRes.value.data) {
         setEco(ecoRes.value.data)
       } else {
-        setEco(SAMPLE_ECOS[id] || null)
+        setEco(null)
       }
 
       // Changes
@@ -191,7 +106,7 @@ export default function EcoDetail() {
         ]
         setChanges(flatChanges)
       } else {
-        setChanges(SAMPLE_CHANGES[id] || [])
+        setChanges([])
       }
 
       // Stages
@@ -199,13 +114,13 @@ export default function EcoDetail() {
         const s = stagesRes.value.data
         setStages(Array.isArray(s) ? s : [])
       } else {
-        setStages(SAMPLE_STAGES)
+        setStages([])
       }
-    } catch {
-      // Full fallback
-      setEco(SAMPLE_ECOS[id] || null)
-      setChanges(SAMPLE_CHANGES[id] || [])
-      setStages(SAMPLE_STAGES)
+    } catch (error) {
+      console.error('Failed to fetch ECO details:', error)
+      setEco(null)
+      setChanges([])
+      setStages([])
     } finally {
       setIsLoading(false)
     }
@@ -218,12 +133,13 @@ export default function EcoDetail() {
   // ── Action handlers ──────────────────────────────────────────
   const handleSubmit = async () => {
     setActionLoading(true)
+    setActionError('')
     try {
       await submitEco(id)
       await fetchData()
-    } catch {
-      // Demo fallback: just change status locally
-      setEco(prev => prev ? { ...prev, status: 'approval', current_stage: SAMPLE_STAGES[0]?.id } : prev)
+    } catch (error) {
+      setActionError(error?.response?.data?.error || 'Submit failed.')
+      console.error('Submit failed:', error)
     } finally {
       setActionLoading(false)
     }
@@ -231,6 +147,7 @@ export default function EcoDetail() {
 
   const handleApproveReject = async () => {
     setActionLoading(true)
+    setActionError('')
     try {
       if (commentDialog.action === 'approve') {
         await approveEco(id, comment)
@@ -240,15 +157,9 @@ export default function EcoDetail() {
       setCommentDialog({ open: false, action: null })
       setComment('')
       await fetchData()
-    } catch {
-      // Demo fallback
-      if (commentDialog.action === 'approve') {
-        setEco(prev => prev ? { ...prev, status: 'approved' } : prev)
-      } else {
-        setEco(prev => prev ? { ...prev, status: 'rejected', rejected_stage: prev.current_stage } : prev)
-      }
-      setCommentDialog({ open: false, action: null })
-      setComment('')
+    } catch (error) {
+      setActionError(error?.response?.data?.error || 'Action failed.')
+      console.error('Action failed:', error)
     } finally {
       setActionLoading(false)
     }
@@ -256,11 +167,13 @@ export default function EcoDetail() {
 
   const handleValidate = async () => {
     setActionLoading(true)
+    setActionError('')
     try {
       await validateEco(id)
       await fetchData()
-    } catch {
-      setEco(prev => prev ? { ...prev, status: 'approved' } : prev)
+    } catch (error) {
+      setActionError(error?.response?.data?.error || 'Validation failed.')
+      console.error('Validation failed:', error)
     } finally {
       setActionLoading(false)
     }
@@ -268,13 +181,14 @@ export default function EcoDetail() {
 
   const handleApply = async () => {
     setActionLoading(true)
+    setActionError('')
     try {
       await applyEco(id)
       setApplyDialog(false)
       await fetchData()
-    } catch {
-      setEco(prev => prev ? { ...prev, status: 'applied' } : prev)
-      setApplyDialog(false)
+    } catch (error) {
+      setActionError(error?.response?.data?.error || 'Apply failed.')
+      console.error('Apply failed:', error)
     } finally {
       setActionLoading(false)
     }
@@ -282,16 +196,14 @@ export default function EcoDetail() {
 
   // ── Derived state ────────────────────────────────────────────
   const isCreator =
-    eco && user && (eco.created_by === user.id || eco.created_by_name === user.username)
+    eco && user && (eco.created_by === user.id || eco.created_by_username === user.username)
 
   const currentStageApprovers = (eco?.approvals || []).filter(
-    (a) => a.stage === eco?.current_stage
-  )
-  const isAssignedApprover = currentStageApprovers.some(
-    (a) => a.user === user?.id
+    (a) => String(a.stage) === String(eco?.current_stage)
   )
   const stageHasNoApprovers = currentStageApprovers.length === 0
   const isOps = hasRole(ROLES.OPERATIONS)
+  const canReviewApprovalStage = eco?.status === ECO_STATUS.APPROVAL && !isOps
 
   // ── Loading / empty state ────────────────────────────────────
   if (isLoading) {
@@ -337,11 +249,12 @@ export default function EcoDetail() {
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Layers className="h-3.5 w-3.5" />
-              {ECO_TYPE_LABELS[eco.eco_type] || eco.eco_type}
+              {ECO_TYPE_LABELS[eco.eco_type] || eco.eco_type} &mdash; {eco.product_name || `Product ${eco.product}`} 
+              {eco.eco_type === 'bom' && (eco.bom_reference ? ` (BoM: ${eco.bom_reference})` : ` (BoM: ${eco.bom})`)}
             </span>
             <span className="flex items-center gap-1.5">
               <User className="h-3.5 w-3.5" />
-              {eco.created_by_name || 'Unknown'}
+              {eco.created_by_username || 'Unknown'}
             </span>
             {eco.effective_date && (
               <span className="flex items-center gap-1.5">
@@ -365,6 +278,14 @@ export default function EcoDetail() {
       </div>
 
       <Separator />
+
+      {actionError && (
+        <Card className="border-red-200 bg-red-50/40">
+          <CardContent className="py-3 text-sm text-red-700">
+            {actionError}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Stage Progress ───────────────────────────────────── */}
       <Card>
@@ -436,7 +357,7 @@ export default function EcoDetail() {
       </Card>
 
       {/* ── Current Stage Approvers ──────────────────────────── */}
-      {eco.status === ECO_STATUS.APPROVAL && (
+      {canReviewApprovalStage && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
@@ -507,7 +428,7 @@ export default function EcoDetail() {
                 ✅ Changes have been applied.
               </p>
               <p className="text-sm text-emerald-700">
-                Product updated to Version {eco.new_version || 'N+1'}.
+                Updated to Version {eco.new_version || 'N+1'}.
               </p>
             </div>
             <div className="flex gap-2">
@@ -547,7 +468,7 @@ export default function EcoDetail() {
           )}
 
           {/* Approve / Reject — assigned approver, status=approval */}
-          {eco.status === ECO_STATUS.APPROVAL && isAssignedApprover && (
+          {canReviewApprovalStage && eco?.can_approve && eco?.can_reject && (
             <>
               <Button
                 variant="outline"
@@ -572,9 +493,7 @@ export default function EcoDetail() {
           )}
 
           {/* Validate — stage has no approvers, user is eng/admin */}
-          {eco.status === ECO_STATUS.APPROVAL &&
-            stageHasNoApprovers &&
-            hasRole(ACCESS.CREATE_ECO) && (
+          {canReviewApprovalStage && eco?.can_validate && stageHasNoApprovers && (
               <Button
                 variant="secondary"
                 onClick={handleValidate}
@@ -586,7 +505,7 @@ export default function EcoDetail() {
             )}
 
           {/* Apply — final step, status=approved */}
-          {eco.status === ECO_STATUS.APPROVED && hasRole(ACCESS.CREATE_ECO) && (
+          {eco?.can_apply && (
             <Button
               onClick={() => setApplyDialog(true)}
               disabled={actionLoading}

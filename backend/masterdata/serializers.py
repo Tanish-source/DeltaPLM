@@ -26,6 +26,11 @@ class BomComponentSerializer(serializers.ModelSerializer):
     class Meta:
         model = BomComponent
         fields = ['id', 'component_product', 'component_product_name', 'quantity']
+        
+    def validate_component_product(self, value):
+        if hasattr(value, 'is_active') and value.is_active is False:
+            raise serializers.ValidationError("Selected component product must be active.")
+        return value
 
 
 class BomOperationSerializer(serializers.ModelSerializer):
@@ -46,6 +51,11 @@ class BillOfMaterialsSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'components', 'operations'
         ]
         read_only_fields = ['reference', 'version', 'created_at', 'updated_at']
+
+    def validate_product(self, value):
+        if hasattr(value, 'is_active') and value.is_active is False:
+            raise serializers.ValidationError("Product must be active to create a BoM.")
+        return value
 
     def create(self, validated_data):
         components_data = validated_data.pop('components', [])

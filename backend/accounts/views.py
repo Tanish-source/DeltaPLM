@@ -59,9 +59,15 @@ class UserListView(generics.ListAPIView):
     """
     Endpoint to list all users, viewable by any authenticated user for assigning tasks.
     """
-    queryset = User.objects.all().order_by('username')
     permission_classes = (IsAuthenticated,)
     serializer_class = UserDetailSerializer
+
+    def get_queryset(self):
+        queryset = User.objects.all().order_by('username')
+        role = self.request.query_params.get('role')
+        if role:
+            queryset = queryset.filter(role=role)
+        return queryset
 
 
 class UserRoleUpdateView(generics.UpdateAPIView):

@@ -50,7 +50,7 @@ export default function StageProgress({
                 className={cn(
                   'flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-semibold transition-all',
                   state === 'completed' && 'border-emerald-500 bg-emerald-500 text-white',
-                  state === 'active' && 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-200 animate-pulse',
+                  state === 'active' && 'border-blue-500 bg-white text-blue-700 ring-2 ring-blue-200 shadow-sm',
                   state === 'pending' && 'border-gray-200 bg-gray-50 text-gray-400',
                   state === 'rejected' && 'border-red-500 bg-red-500 text-white'
                 )}
@@ -60,7 +60,7 @@ export default function StageProgress({
                 ) : state === 'rejected' ? (
                   <X className="h-4 w-4" />
                 ) : state === 'active' ? (
-                  <Circle className="h-3 w-3 fill-current" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" />
                 ) : (
                   <span>{idx + 1}</span>
                 )}

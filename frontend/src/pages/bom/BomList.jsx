@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getBoms, archiveBom, restoreBom } from '@/api/boms'
+import { getBoms } from '@/api/boms'
 import { getProducts } from '@/api/products'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROLES } from '@/lib/constants'
@@ -8,7 +8,7 @@ import PageHeader from '@/components/shared/PageHeader'
 import DataTable from '@/components/shared/DataTable'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Plus, Eye, Pencil, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, Eye } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export default function BomList() {
@@ -61,30 +61,6 @@ export default function BomList() {
     return () => clearTimeout(timer)
   }, [activeTab, searchQuery, selectedProduct])
 
-  const handleArchive = async (e, id) => {
-    e.stopPropagation()
-    if (!confirm('Are you sure you want to archive this Bill of Materials?')) return
-    
-    try {
-      await archiveBom(id)
-      fetchBoms(activeTab === 'active', searchQuery, selectedProduct)
-    } catch (error) {
-      console.error('Failed to archive BoM', error)
-    }
-  }
-
-  const handleRestore = async (e, id) => {
-    e.stopPropagation()
-    if (!confirm('Are you sure you want to restore this Bill of Materials?')) return
-    
-    try {
-      await restoreBom(id)
-      fetchBoms(activeTab === 'active', searchQuery, selectedProduct)
-    } catch (error) {
-      console.error('Failed to restore BoM', error)
-    }
-  }
-
   const columns = [
     { key: 'reference', label: 'Reference', render: (row) => <span className="font-mono text-xs">{row.reference || '—'}</span> },
     { key: 'product_name', label: 'Product', render: (row) => <span className="font-medium">{row.product_name || row.product?.name || 'Unknown'}</span> },
@@ -109,30 +85,6 @@ export default function BomList() {
       >
         <Eye className="h-4 w-4" />
       </Button>
-      
-      {canEdit && activeTab === 'active' && (
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-          title="Archive BoM"
-          onClick={(e) => handleArchive(e, row.id)}
-        >
-          <Archive className="h-4 w-4" />
-        </Button>
-      )}
-
-      {canEdit && activeTab === 'archived' && (
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-8 w-8 text-muted-foreground hover:text-green-600"
-          title="Restore BoM"
-          onClick={(e) => handleRestore(e, row.id)}
-        >
-          <ArchiveRestore className="h-4 w-4" />
-        </Button>
-      )}
     </div>
   )
 

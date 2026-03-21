@@ -10,17 +10,6 @@ import PageHeader from '@/components/shared/PageHeader'
 import DataTable from '@/components/shared/DataTable'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 
-// ── Sample data (until backend ECO endpoints are ready) ─────────
-const SAMPLE_ECOS = [
-  { id: 1, title: 'Price Update Q4', eco_type: 'product', product_name: 'iPhone 17 Pro', status: 'approval', created_by_name: 'John Doe', created_at: '2026-03-18T10:00:00Z' },
-  { id: 2, title: 'Component Revision', eco_type: 'bom', product_name: 'Galaxy S26', status: 'new', created_by_name: 'Sarah Chen', created_at: '2026-03-19T14:30:00Z' },
-  { id: 3, title: 'New Assembly Line', eco_type: 'bom', product_name: 'Pixel 12', status: 'approved', created_by_name: 'Mike Johnson', created_at: '2026-03-17T09:15:00Z' },
-  { id: 4, title: 'Cost Reduction', eco_type: 'product', product_name: 'iPhone 17 Pro', status: 'applied', created_by_name: 'John Doe', created_at: '2026-03-15T11:00:00Z' },
-  { id: 5, title: 'Material Change', eco_type: 'bom', product_name: 'Galaxy S26', status: 'rejected', created_by_name: 'Lisa Wang', created_at: '2026-03-14T16:45:00Z' },
-  { id: 6, title: 'Packaging Redesign', eco_type: 'product', product_name: 'Pixel 12', status: 'new', created_by_name: 'Sarah Chen', created_at: '2026-03-20T08:00:00Z' },
-  { id: 7, title: 'Connector Upgrade', eco_type: 'bom', product_name: 'iPhone 17 Pro', status: 'approval', created_by_name: 'Mike Johnson', created_at: '2026-03-16T13:20:00Z' },
-]
-
 export default function EcoList() {
   const navigate = useNavigate()
   const { hasRole } = useAuth()
@@ -46,33 +35,13 @@ export default function EcoList() {
       if (filters.search) params.search = filters.search
 
       const res = await getEcos(params)
-      const ecos = res.data?.results || res.data || []
-      setData(Array.isArray(ecos) && ecos.length > 0 ? ecos : filterSample())
-    } catch {
-      // Backend not ready — use sample data
-      setData(filterSample())
+      setData(res.data?.results || res.data || [])
+    } catch (error) {
+      console.error('Failed to fetch ECOs:', error)
+      setData([])
     } finally {
       setIsLoading(false)
     }
-  }
-
-  // Client-side filter on sample data
-  const filterSample = () => {
-    let filtered = [...SAMPLE_ECOS]
-    if (filters.status !== 'all') {
-      filtered = filtered.filter(e => e.status === filters.status)
-    }
-    if (filters.type !== 'all') {
-      filtered = filtered.filter(e => e.eco_type === filters.type)
-    }
-    if (filters.search) {
-      const q = filters.search.toLowerCase()
-      filtered = filtered.filter(e =>
-        e.title.toLowerCase().includes(q) ||
-        e.product_name.toLowerCase().includes(q)
-      )
-    }
-    return filtered
   }
 
   const columns = [

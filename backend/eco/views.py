@@ -6,7 +6,7 @@ from .serializers import (
     ECOSerializer, ECOApprovalSerializer, StageSerializer,
     StageApproverSerializer, StageRuleSerializer
 )
-from .services import submit_eco_to_workflow, approve_stage, reject_stage, validate_stage, apply_eco
+from .services import submit_eco_to_workflow, approve_stage, reject_stage, validate_stage, apply_eco, ensure_default_stages
 
 class IsAdminOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -15,13 +15,20 @@ class IsAdminOrReadOnly(permissions.BasePermission):
         return request.user and request.user.is_authenticated and (request.user.role == 'admin' or request.user.is_superuser)
 
 class StageViewSet(viewsets.ModelViewSet):
-    queryset = Stage.objects.all()
     serializer_class = StageSerializer
     permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        ensure_default_stages()
+        return Stage.objects.all()
     
-    @action(detail=True, methods=['post'], url_path='approvers')
-    def add_approver(self, request, pk=None):
+    @action(detail=True, methods=['get', 'post'], url_path='approvers')
+    def approvers(self, request, pk=None):
         stage = self.get_object()
+        if request.method == 'GET':
+            serializer = StageApproverSerializer(stage.approvers.all(), many=True)
+            return Response(serializer.data)
+        
         serializer = StageApproverSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(stage=stage)
@@ -61,19 +68,52 @@ class ECOViewSet(viewsets.ModelViewSet):
     search_fields = ['title']
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        user = self.request.user
+        if getattr(user, 'role', '') not in ['engineering', 'admin'] and not getattr(user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Engineering or Admin can create ECOs.")
+        serializer.save(created_by=user)
+
+    def update(self, request, *args, **kwargs):
+        user = request.user
+        if getattr(user, 'role', '') not in ['engineering', 'admin'] and not getattr(user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Engineering or Admin can edit ECOs.")
+        eco = self.get_object()
+        if eco.status != 'new':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Cannot edit an ECO that is not in the NEW status.")
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        user = request.user
+        if getattr(user, 'role', '') not in ['engineering', 'admin'] and not getattr(user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Engineering or Admin can delete ECOs.")
+        eco = self.get_object()
+        if eco.status != 'new':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Cannot delete an ECO that is not in the NEW status.")
+        return super().destroy(request, *args, **kwargs)
         
     @action(detail=True, methods=['post'], url_path='submit')
     def submit_eco(self, request, pk=None):
+        if getattr(request.user, 'role', '') not in ['engineering', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Engineering or Admin can submit ECOs.")
         eco = self.get_object()
         try:
             eco = submit_eco_to_workflow(eco, request.user)
-            return Response({'status': eco.status, 'state': eco.current_stage.name if eco.current_stage else 'APPROVED'})
+            serializer = self.get_serializer(eco)
+            return Response(serializer.data)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], url_path='approve')
     def approve_eco(self, request, pk=None):
+        if getattr(request.user, 'role', '') not in ['approver', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Approvers or Admin can approve ECOs.")
         eco = self.get_object()
         comment = request.data.get('comment', '')
         try:
@@ -84,6 +124,9 @@ class ECOViewSet(viewsets.ModelViewSet):
             
     @action(detail=True, methods=['post'], url_path='reject')
     def reject_eco(self, request, pk=None):
+        if getattr(request.user, 'role', '') not in ['approver', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Approvers or Admin can reject ECOs.")
         eco = self.get_object()
         comment = request.data.get('comment', '')
         try:
@@ -94,6 +137,9 @@ class ECOViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='validate')
     def validate_eco(self, request, pk=None):
+        if getattr(request.user, 'role', '') not in ['approver', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Approvers or Admin can validate ECOs.")
         eco = self.get_object()
         try:
             eco = validate_stage(eco, request.user)
@@ -104,6 +150,9 @@ class ECOViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='apply')
     def apply_eco(self, request, pk=None):
         """Apply an approved ECO to master data. Auto-sets effective_date."""
+        if getattr(request.user, 'role', '') not in ['approver', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Approvers or Admin can apply ECOs.")
         eco = self.get_object()
         try:
             eco = apply_eco(eco, request.user)
@@ -116,25 +165,25 @@ class ECOViewSet(viewsets.ModelViewSet):
     def diff(self, request, pk=None):
         eco = self.get_object()
         if eco.eco_type == ECO.ECOType.PRODUCT:
-            changes = []
+            fields = []
             for c in eco.product_changes.all():
-                changes.append({
+                fields.append({
                     "field": c.field_name,
+                    "label": c.field_name.replace('_', ' ').title(),
                     "old": c.old_value,
-                    "new": c.new_value
+                    "new": c.new_value,
+                    "changed": c.old_value != c.new_value,
                 })
-            
-            version_old = eco.product.version
-            if eco.status == ECO.Status.APPLIED and eco.version_update:
-                version_new = version_old + 1
-            else:
-                version_new = version_old if not eco.version_update else version_old + 1
+
+            version_old = eco.product.version if eco.product else 1
+            version_new = version_old + 1 if eco.version_update else version_old
 
             return Response({
+                "type": "product",
                 "product_name": eco.product.name,
-                "version_old": version_old,
-                "version_new": version_new,
-                "changes": changes
+                "old_version": version_old,
+                "new_version": version_new,
+                "fields": fields
             })
             
         elif eco.eco_type == ECO.ECOType.BOM:
@@ -151,16 +200,21 @@ class ECOViewSet(viewsets.ModelViewSet):
             for c in eco.bom_operation_changes.all():
                 operations.append({
                     "name": c.operation_name,
-                    "old": str(c.old_duration) if c.old_duration is not None else None,
-                    "new": str(c.new_duration) if c.new_duration is not None else None,
-                    "change": c.change_type
+                    "old_duration": str(c.old_duration) if c.old_duration is not None else None,
+                    "new_duration": str(c.new_duration) if c.new_duration is not None else None,
+                    "change": c.change_type,
+                    "changed": c.old_duration != c.new_duration
                 })
                 
             bom_version_old = eco.bom.version if eco.bom else 1
             bom_version_new = bom_version_old + 1 if eco.version_update else bom_version_old
                 
             return Response({
+                "type": "bom",
                 "product_name": eco.product.name if eco.product else "Unknown",
+                "old_version": bom_version_old,
+                "new_version": bom_version_new,
+                "bom_version": f"v{bom_version_old} -> v{bom_version_new}",
                 "bom_version_old": bom_version_old,
                 "bom_version_new": bom_version_new,
                 "components": components,

@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.core.validators import MinValueValidator
 
 class Stage(models.Model):
     name       = models.CharField(max_length=100)
@@ -43,7 +44,8 @@ class ECO(models.Model):
     product        = models.ForeignKey('masterdata.Product', on_delete=models.CASCADE)
     bom            = models.ForeignKey('masterdata.BillOfMaterials', null=True, blank=True, on_delete=models.CASCADE)
     status         = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
-    current_stage  = models.ForeignKey(Stage, null=True, blank=True, on_delete=models.SET_NULL)
+    current_stage  = models.ForeignKey(Stage, null=True, blank=True, on_delete=models.SET_NULL, related_name='current_ecos')
+    rejected_stage = models.ForeignKey(Stage, null=True, blank=True, on_delete=models.SET_NULL, related_name='rejected_ecos')
     effective_date = models.DateField(null=True, blank=True)
     version_update = models.BooleanField(default=True)
     created_by     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='ecos_created')
@@ -70,8 +72,8 @@ class ECOBomComponentChange(models.Model):
     eco               = models.ForeignKey(ECO, related_name='bom_component_changes', on_delete=models.CASCADE)
     change_type       = models.CharField(max_length=10, choices=ChangeType.choices)
     component_product = models.ForeignKey('masterdata.Product', null=True, on_delete=models.SET_NULL)
-    old_quantity      = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    new_quantity      = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    old_quantity      = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0.01)])
+    new_quantity      = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0.01)])
 
 class ECOBomOperationChange(models.Model):
     class ChangeType(models.TextChoices):

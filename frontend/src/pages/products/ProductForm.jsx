@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProduct, createProduct, updateProduct, archiveProduct } from '@/api/products'
+import { getProduct, createProduct, updateProduct } from '@/api/products'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROLES } from '@/lib/constants'
 import PageHeader from '@/components/shared/PageHeader'

@@ -36,46 +36,6 @@ import {
   Minus as MinusIcon,
 } from 'lucide-react'
 
-// ── Sample report data ──────────────────────────────────────────
-const SAMPLE_STATUS_DISTRIBUTION = [
-  { status: 'new', count: 3, percentage: 21 },
-  { status: 'approval', count: 4, percentage: 29 },
-  { status: 'approved', count: 2, percentage: 14 },
-  { status: 'applied', count: 3, percentage: 22 },
-  { status: 'rejected', count: 2, percentage: 14 },
-]
-
-const SAMPLE_MONTHLY_TRENDS = [
-  { month: 'Jan 2026', created: 5, approved: 3, rejected: 1 },
-  { month: 'Feb 2026', created: 8, approved: 6, rejected: 2 },
-  { month: 'Mar 2026', created: 14, approved: 9, rejected: 2 },
-]
-
-const SAMPLE_APPROVER_STATS = [
-  { name: 'Sarah Chen', approved: 8, rejected: 1, avg_time: '1.2 days', pending: 2 },
-  { name: 'Mike Johnson', approved: 6, rejected: 0, avg_time: '0.8 days', pending: 1 },
-  { name: 'Lisa Wang', approved: 4, rejected: 2, avg_time: '2.1 days', pending: 0 },
-  { name: 'Alex Rivera', approved: 3, rejected: 0, avg_time: '1.5 days', pending: 3 },
-]
-
-const SAMPLE_PRODUCT_CHANGES = [
-  { product: 'iPhone 17 Pro', total_ecos: 4, applied: 2, pending: 1, last_change: '2026-03-20' },
-  { product: 'Galaxy S26', total_ecos: 3, applied: 1, pending: 1, last_change: '2026-03-19' },
-  { product: 'Pixel 12', total_ecos: 2, applied: 1, pending: 0, last_change: '2026-03-17' },
-  { product: 'OnePlus 14', total_ecos: 1, applied: 0, pending: 1, last_change: '2026-03-21' },
-  { product: 'Xperia 5', total_ecos: 1, applied: 1, pending: 0, last_change: '2026-03-10' },
-]
-
-const SAMPLE_SUMMARY = {
-  total_ecos: 14,
-  total_ecos_change: 12,
-  avg_approval_time: '1.4 days',
-  approval_rate: 82,
-  approval_rate_change: 5,
-  active_stages: 3,
-  pending_approvals: 4,
-}
-
 function StatCard({ title, value, icon: Icon, description, trend, trendValue }) {
   return (
     <Card>
@@ -107,6 +67,9 @@ function StatCard({ title, value, icon: Icon, description, trend, trendValue }) 
 
 // Simple visual bar chart
 function BarChartVisual({ data }) {
+  if (!data.length) {
+    return <p className="text-sm text-muted-foreground italic">No status data available.</p>
+  }
   const maxVal = Math.max(...data.map(d => d.count), 1)
   return (
     <div className="space-y-3">
@@ -139,6 +102,9 @@ function BarChartVisual({ data }) {
 
 // Mini trend chart using CSS
 function TrendChart({ data }) {
+  if (!data.length) {
+    return <p className="text-sm text-muted-foreground italic">No trend data available.</p>
+  }
   const maxCreated = Math.max(...data.map(d => d.created), 1)
   return (
     <div className="space-y-4">
@@ -170,11 +136,19 @@ function TrendChart({ data }) {
 
 export default function Reports() {
   const navigate = useNavigate()
-  const [summary, setSummary] = useState(SAMPLE_SUMMARY)
-  const [statusDist, setStatusDist] = useState(SAMPLE_STATUS_DISTRIBUTION)
-  const [trends, setTrends] = useState(SAMPLE_MONTHLY_TRENDS)
-  const [approverStats, setApproverStats] = useState(SAMPLE_APPROVER_STATS)
-  const [productChanges, setProductChanges] = useState(SAMPLE_PRODUCT_CHANGES)
+  const [summary, setSummary] = useState({
+    total_ecos: 0,
+    total_ecos_change: 0,
+    avg_approval_time: '0 days',
+    approval_rate: 0,
+    approval_rate_change: 0,
+    active_stages: 0,
+    pending_approvals: 0,
+  })
+  const [statusDist, setStatusDist] = useState([])
+  const [trends, setTrends] = useState([])
+  const [approverStats, setApproverStats] = useState([])
+  const [productChanges, setProductChanges] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
 
@@ -190,8 +164,8 @@ export default function Reports() {
           if (res.data.approver_stats) setApproverStats(res.data.approver_stats)
           if (res.data.product_changes) setProductChanges(res.data.product_changes)
         }
-      } catch {
-        // Keep sample data
+      } catch (error) {
+        console.error('Failed to fetch reports:', error)
       } finally {
         setIsLoading(false)
       }
@@ -388,9 +362,9 @@ export default function Reports() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(p.last_change).toLocaleDateString('en-US', {
+                          {p.last_change ? new Date(p.last_change).toLocaleDateString('en-US', {
                             month: 'short', day: 'numeric',
-                          })}
+                          }) : '-'}
                         </TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" onClick={() => navigate(`/ecos?product=${encodeURIComponent(p.product)}`)}>

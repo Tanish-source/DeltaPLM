@@ -1,9 +1,10 @@
 from django.db import models
+from django.core.validators import MinValueValidator
 
 class Product(models.Model):
     name = models.CharField(max_length=255)
-    sale_price = models.DecimalField(max_digits=12, decimal_places=2)
-    cost_price = models.DecimalField(max_digits=12, decimal_places=2)
+    sale_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    cost_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     version = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
     parent = models.ForeignKey(
@@ -60,7 +61,7 @@ class BillOfMaterials(models.Model):
 class BomComponent(models.Model):
     bom = models.ForeignKey(BillOfMaterials, related_name='components', on_delete=models.CASCADE)
     component_product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
 
     def __str__(self):
         return f"{self.quantity} x {self.component_product.name}"

@@ -24,6 +24,14 @@ class StageSerializer(serializers.ModelSerializer):
         model = Stage
         fields = ['id', 'name', 'sequence', 'is_active', 'approvers', 'rule']
 
+    def validate_name(self, value):
+        queryset = Stage.objects.filter(name__iexact=value.strip())
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError('Stage name must be unique.')
+        return value.strip()
+
 class ECOProductChangeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ECOProductChange
@@ -46,8 +54,10 @@ class ECOSerializer(serializers.ModelSerializer):
     bom_version = serializers.CharField(source='bom.version', read_only=True)
     bom_reference = serializers.CharField(source='bom.reference', read_only=True)
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     responsible_user_username = serializers.CharField(source='responsible_user.username', read_only=True, default=None)
     current_stage_name = serializers.CharField(source='current_stage.name', read_only=True)
+    new_version = serializers.SerializerMethodField()
     
     product_changes = ECOProductChangeSerializer(many=True, required=False)
     bom_component_changes = ECOBomComponentChangeSerializer(many=True, required=False)
@@ -55,22 +65,28 @@ class ECOSerializer(serializers.ModelSerializer):
     
     approvals = serializers.SerializerMethodField()
     stage_summary = serializers.SerializerMethodField()
+    can_approve = serializers.SerializerMethodField()
+    can_reject = serializers.SerializerMethodField()
+    can_validate = serializers.SerializerMethodField()
+    can_apply = serializers.SerializerMethodField()
 
     class Meta:
         model = ECO
         fields = [
             'id', 'title', 'eco_type', 'product', 'product_name', 'bom', 'bom_version', 'bom_reference',
-            'status', 'current_stage', 'current_stage_name', 'effective_date', 'version_update',
-            'created_by', 'created_by_username', 'responsible_user', 'responsible_user_username',
+            'status', 'current_stage', 'current_stage_name', 'rejected_stage', 'effective_date', 'version_update',
+            'created_by', 'created_by_username', 'created_by_name', 'responsible_user', 'responsible_user_username',
             'created_at', 'updated_at',
             'product_changes', 'bom_component_changes', 'bom_operation_changes',
-            'approvals', 'stage_summary'
+            'approvals', 'stage_summary', 'new_version',
+            'can_approve', 'can_reject', 'can_validate', 'can_apply'
         ]
-        read_only_fields = ['status', 'current_stage', 'created_by', 'effective_date']
+        read_only_fields = ['status', 'created_by', 'effective_date']
 
     def validate(self, data):
         eco_type = data.get('eco_type', getattr(self.instance, 'eco_type', None))
         bom = data.get('bom', getattr(self.instance, 'bom', None))
+        product = data.get('product', getattr(self.instance, 'product', None))
 
         if eco_type == 'bom' and bom is None:
             raise serializers.ValidationError({
@@ -80,6 +96,34 @@ class ECOSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'bom': 'Bill of Materials must not be set when ECO type is "product".'
             })
+            
+        if bom and getattr(bom, 'is_active', True) is False:
+            raise serializers.ValidationError({'bom': 'Selected BoM must be active.'})
+            
+        if product and getattr(product, 'is_active', True) is False:
+            raise serializers.ValidationError({'product': 'Selected Product must be active.'})
+            
+        if eco_type == 'bom' and bom and product and bom.product_id != product.id:
+            raise serializers.ValidationError({'bom': 'Selected BoM must belong to the selected Product.'})
+        if eco_type == 'product' and product is None:
+            raise serializers.ValidationError({'product': 'Product is required when ECO type is "product".'})
+
+        has_product_changes = bool(data.get('product_changes'))
+        has_bom_component_changes = bool(data.get('bom_component_changes'))
+        has_bom_operation_changes = bool(data.get('bom_operation_changes'))
+
+        if self.instance:
+            has_product_changes = has_product_changes or self.instance.product_changes.exists()
+            has_bom_component_changes = has_bom_component_changes or self.instance.bom_component_changes.exists()
+            has_bom_operation_changes = has_bom_operation_changes or self.instance.bom_operation_changes.exists()
+
+        if eco_type == 'product' and not has_product_changes:
+            raise serializers.ValidationError({'product_changes': 'At least one product change is required.'})
+        if eco_type == 'bom' and not (has_bom_component_changes or has_bom_operation_changes):
+            raise serializers.ValidationError({
+                'bom_component_changes': 'At least one BoM component or operation change is required.'
+            })
+
         return data
 
     def get_approvals(self, obj):
@@ -166,10 +210,59 @@ class ECOSerializer(serializers.ModelSerializer):
                 
         return instance
 
+    def get_new_version(self, obj):
+        if obj.eco_type == ECO.ECOType.PRODUCT:
+            return obj.product.version + 1 if obj.version_update else obj.product.version
+        if obj.eco_type == ECO.ECOType.BOM and obj.bom:
+            return obj.bom.version + 1 if obj.version_update else obj.bom.version
+        return None
+
+    def _approval_capable_user(self):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return None
+        if getattr(user, 'is_superuser', False) or getattr(user, 'role', '') in ['approver', 'admin']:
+            return user
+        return None
+
+    def _is_stage_assigned(self, obj, user):
+        if not obj.current_stage or not user:
+            return False
+        if obj.approvals.filter(stage=obj.current_stage, user=user).exists():
+            return True
+        return StageApprover.objects.filter(stage=obj.current_stage, user=user).exists()
+
+    def get_can_approve(self, obj):
+        user = self._approval_capable_user()
+        if not user or obj.status != ECO.Status.APPROVAL or not obj.current_stage:
+            return False
+        if obj.current_stage.approvers.count() == 0:
+            return False
+        return self._is_stage_assigned(obj, user)
+
+    def get_can_reject(self, obj):
+        return self.get_can_approve(obj)
+
+    def get_can_validate(self, obj):
+        user = self._approval_capable_user()
+        if not user or obj.status != ECO.Status.APPROVAL or not obj.current_stage:
+            return False
+        return obj.current_stage.approvers.count() == 0
+
+    def get_can_apply(self, obj):
+        user = self._approval_capable_user()
+        return bool(user and obj.status == ECO.Status.APPROVED)
+
 class ECOApprovalSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     stage_name = serializers.CharField(source='stage.name', read_only=True)
+    category = serializers.SerializerMethodField()
     
     class Meta:
         model = ECOApproval
-        fields = ['id', 'user', 'username', 'stage', 'stage_name', 'decision', 'comment', 'decided_at']
+        fields = ['id', 'user', 'username', 'stage', 'stage_name', 'category', 'decision', 'comment', 'decided_at']
+
+    def get_category(self, obj):
+        stage_approver = StageApprover.objects.filter(stage=obj.stage, user=obj.user).first()
+        return stage_approver.category if stage_approver else None

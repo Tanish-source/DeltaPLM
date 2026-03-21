@@ -36,32 +36,15 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
-// ── Sample data ─────────────────────────────────────────────────
-const SAMPLE_AUDIT_LOGS = [
-  { id: 1, action: 'eco_created', actor: 'John Doe', actor_role: 'engineering', target: 'ECO: Price Update Q4', details: 'Created new product ECO for iPhone 17 Pro', timestamp: '2026-03-21T18:05:00Z', eco_id: 1 },
-  { id: 2, action: 'eco_submitted', actor: 'John Doe', actor_role: 'engineering', target: 'ECO: Price Update Q4', details: 'Submitted ECO for approval', timestamp: '2026-03-21T17:30:00Z', eco_id: 1 },
-  { id: 3, action: 'eco_approved', actor: 'Sarah Chen', actor_role: 'approver', target: 'ECO: Price Update Q4', details: 'Approved at Manager Review stage. Comment: "Pricing looks appropriate for Q4."', timestamp: '2026-03-21T16:00:00Z', eco_id: 1 },
-  { id: 4, action: 'eco_rejected', actor: 'Lisa Wang', actor_role: 'approver', target: 'ECO: Material Change', details: 'Rejected at Quality Check stage. Reason: "Materials fail compliance test ISO-9001."', timestamp: '2026-03-21T14:45:00Z', eco_id: 5 },
-  { id: 5, action: 'stage_created', actor: 'Admin', actor_role: 'admin', target: 'Stage: Final Approval', details: 'Created new approval stage with sequence 3', timestamp: '2026-03-21T12:00:00Z', eco_id: null },
-  { id: 6, action: 'approver_added', actor: 'Admin', actor_role: 'admin', target: 'Stage: Manager Review', details: 'Added Sarah Chen as required approver', timestamp: '2026-03-21T11:50:00Z', eco_id: null },
-  { id: 7, action: 'eco_created', actor: 'Sarah Chen', actor_role: 'engineering', target: 'ECO: Component Revision', details: 'Created new BoM ECO for Galaxy S26', timestamp: '2026-03-20T14:30:00Z', eco_id: 2 },
-  { id: 8, action: 'product_created', actor: 'Mike Johnson', actor_role: 'engineering', target: 'Product: Pixel 12', details: 'Created new product with sale price $699', timestamp: '2026-03-20T10:00:00Z', eco_id: null },
-  { id: 9, action: 'eco_applied', actor: 'System', actor_role: 'admin', target: 'ECO: Cost Reduction', details: 'ECO changes applied. iPhone 17 Pro updated to version 3.', timestamp: '2026-03-19T09:00:00Z', eco_id: 4 },
-  { id: 10, action: 'eco_approved', actor: 'Mike Johnson', actor_role: 'approver', target: 'ECO: New Assembly Line', details: 'Approved at Final Approval stage.', timestamp: '2026-03-18T16:00:00Z', eco_id: 3 },
-  { id: 11, action: 'bom_created', actor: 'John Doe', actor_role: 'engineering', target: 'BoM: Galaxy S26 v1', details: 'Created BoM with 8 components and 3 operations', timestamp: '2026-03-17T09:15:00Z', eco_id: null },
-  { id: 12, action: 'eco_submitted', actor: 'Mike Johnson', actor_role: 'engineering', target: 'ECO: Connector Upgrade', details: 'Submitted ECO for approval', timestamp: '2026-03-16T13:20:00Z', eco_id: 7 },
-]
-
 const ACTION_CONFIG = {
   eco_created: { icon: Plus, label: 'ECO Created', color: 'bg-blue-100 text-blue-700 border-blue-200' },
   eco_submitted: { icon: Send, label: 'ECO Submitted', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  eco_approved: { icon: CheckCircle2, label: 'Approved', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  eco_rejected: { icon: XCircle, label: 'Rejected', color: 'bg-red-100 text-red-700 border-red-200' },
-  eco_applied: { icon: Shield, label: 'Applied', color: 'bg-purple-100 text-purple-700 border-purple-200' },
-  stage_created: { icon: Settings, label: 'Stage Created', color: 'bg-secondary text-secondary-foreground border-border' },
-  approver_added: { icon: User, label: 'Approver Added', color: 'bg-secondary text-secondary-foreground border-border' },
-  product_created: { icon: Plus, label: 'Product Created', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  bom_created: { icon: Plus, label: 'BoM Created', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  approval_given: { icon: CheckCircle2, label: 'Approval Given', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  approval_rejected: { icon: XCircle, label: 'Approval Rejected', color: 'bg-red-100 text-red-700 border-red-200' },
+  stage_changed: { icon: Settings, label: 'Stage Changed', color: 'bg-secondary text-secondary-foreground border-border' },
+  version_created: { icon: Shield, label: 'Version Created', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  record_archived: { icon: Pencil, label: 'Archived', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  record_updated: { icon: Pencil, label: 'Updated', color: 'bg-secondary text-secondary-foreground border-border' },
   default: { icon: FileText, label: 'Action', color: 'bg-secondary text-secondary-foreground border-border' },
 }
 
@@ -69,13 +52,12 @@ const ACTION_TYPES = [
   { value: 'all', label: 'All Actions' },
   { value: 'eco_created', label: 'ECO Created' },
   { value: 'eco_submitted', label: 'ECO Submitted' },
-  { value: 'eco_approved', label: 'Approved' },
-  { value: 'eco_rejected', label: 'Rejected' },
-  { value: 'eco_applied', label: 'Applied' },
-  { value: 'stage_created', label: 'Stage Created' },
-  { value: 'approver_added', label: 'Approver Added' },
-  { value: 'product_created', label: 'Product Created' },
-  { value: 'bom_created', label: 'BoM Created' },
+  { value: 'approval_given', label: 'Approval Given' },
+  { value: 'approval_rejected', label: 'Approval Rejected' },
+  { value: 'stage_changed', label: 'Stage Changed' },
+  { value: 'version_created', label: 'Version Created' },
+  { value: 'record_archived', label: 'Archived' },
+  { value: 'record_updated', label: 'Updated' },
 ]
 
 export default function AuditLog() {
@@ -96,9 +78,10 @@ export default function AuditLog() {
     try {
       const res = await getAuditLogs()
       const data = res.data?.results || res.data || []
-      setAllLogs(Array.isArray(data) && data.length > 0 ? data : SAMPLE_AUDIT_LOGS)
-    } catch {
-      setAllLogs([...SAMPLE_AUDIT_LOGS])
+      setAllLogs(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Failed to fetch audit logs:', error)
+      setAllLogs([])
     } finally {
       setIsLoading(false)
     }

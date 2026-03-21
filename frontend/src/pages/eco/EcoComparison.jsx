@@ -18,40 +18,6 @@ import PageHeader from '@/components/shared/PageHeader'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { ArrowLeft, ArrowRight, Minus, Plus, Equal, Diff } from 'lucide-react'
 
-// ── Sample data ─────────────────────────────────────────────────
-const SAMPLE_ECO = {
-  id: 1, title: 'Price Update Q4', eco_type: 'product',
-  product_name: 'iPhone 17 Pro', status: 'applied',
-}
-
-const SAMPLE_PRODUCT_DIFF = {
-  type: 'product',
-  product_name: 'iPhone 17 Pro',
-  old_version: 2,
-  new_version: 3,
-  fields: [
-    { field: 'sale_price', label: 'Sale Price', old: '$500.00', new: '$545.00', changed: true },
-    { field: 'cost_price', label: 'Cost Price', old: '$340.00', new: '$360.00', changed: true },
-    { field: 'name', label: 'Product Name', old: 'iPhone 17 Pro', new: 'iPhone 17 Pro', changed: false },
-  ],
-}
-
-const SAMPLE_BOM_DIFF = {
-  type: 'bom',
-  product_name: 'Galaxy S26',
-  bom_version: 'v2 → v3',
-  components: [
-    { name: 'Capacitor 10μF', old_qty: 5, new_qty: 8, change: 'modify' },
-    { name: 'Resistor 1kΩ', old_qty: 6, new_qty: 3, change: 'modify' },
-    { name: 'USB-C Connector', old_qty: 0, new_qty: 1, change: 'add' },
-    { name: 'Lightning Connector', old_qty: 1, new_qty: 0, change: 'remove' },
-  ],
-  operations: [
-    { name: 'SMD Assembly', old_duration: '02:30:00', new_duration: '03:00:00', changed: true },
-    { name: 'Final QC', old_duration: '01:00:00', new_duration: '01:00:00', changed: false },
-  ],
-}
-
 function ChangeIndicator({ type }) {
   if (type === 'add') return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs">Added</Badge>
   if (type === 'remove') return <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">Removed</Badge>
@@ -76,18 +42,21 @@ export default function EcoComparison() {
         getEcoDiff(ecoId),
       ])
 
-      setEco(ecoRes.status === 'fulfilled' ? ecoRes.value.data : SAMPLE_ECO)
+      if (ecoRes.status === 'fulfilled' && ecoRes.value.data) {
+        setEco(ecoRes.value.data)
+      } else {
+        setEco(null)
+      }
 
       if (diffRes.status === 'fulfilled' && diffRes.value.data) {
         setDiff(diffRes.value.data)
       } else {
-        // Pick sample based on ECO type
-        const ecoData = ecoRes.status === 'fulfilled' ? ecoRes.value.data : SAMPLE_ECO
-        setDiff(ecoData?.eco_type === 'bom' ? SAMPLE_BOM_DIFF : SAMPLE_PRODUCT_DIFF)
+        setDiff(null)
       }
-    } catch {
-      setEco(SAMPLE_ECO)
-      setDiff(SAMPLE_PRODUCT_DIFF)
+    } catch (error) {
+      console.error('Failed to fetch ECO comparison:', error)
+      setEco(null)
+      setDiff(null)
     } finally {
       setIsLoading(false)
     }
@@ -132,7 +101,7 @@ export default function EcoComparison() {
           <div className="flex flex-wrap items-center gap-6 text-sm">
             <div>
               <span className="text-muted-foreground">Type:</span>{' '}
-              <span className="font-medium">{isProduct ? 'Product Change' : 'BoM Change'}</span>
+              <span className="font-medium">{isProduct ? 'Product Change' : isBom ? 'BoM Change' : '-'}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Target:</span>{' '}

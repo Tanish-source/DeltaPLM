@@ -46,15 +46,6 @@ function StatCard({ title, value, icon: Icon, description, isLoading }) {
   )
 }
 
-// ── Mock/Sample Data (until backend is ready) ────────────────────
-const SAMPLE_ECOS = [
-  { id: 1, title: 'Price Update Q4', eco_type: 'product', product_name: 'iPhone 17 Pro', status: 'approval', created_by: 'John Doe', created_at: '2026-03-18' },
-  { id: 2, title: 'Component Revision', eco_type: 'bom', product_name: 'Galaxy S26', status: 'new', created_by: 'Sarah Chen', created_at: '2026-03-19' },
-  { id: 3, title: 'New Assembly Line', eco_type: 'bom', product_name: 'Pixel 12', status: 'approved', created_by: 'Mike Johnson', created_at: '2026-03-17' },
-  { id: 4, title: 'Cost Reduction', eco_type: 'product', product_name: 'iPhone 17 Pro', status: 'applied', created_by: 'John Doe', created_at: '2026-03-15' },
-  { id: 5, title: 'Material Change', eco_type: 'bom', product_name: 'Galaxy S26', status: 'rejected', created_by: 'Lisa Wang', created_at: '2026-03-14' },
-]
-
 export default function Dashboard() {
   const { user, hasRole } = useAuth()
   const [stats, setStats] = useState({ products: 0, boms: 0, ecos: 0, pending: 0 })
@@ -65,7 +56,6 @@ export default function Dashboard() {
     const fetchDashboardData = async () => {
       setIsLoading(true)
       try {
-        // Try hitting real APIs; fall back to sample data
         const [productsRes, bomsRes, ecosRes] = await Promise.allSettled([
           api.get('/products/', { params: { is_active: true } }),
           api.get('/boms/', { params: { is_active: true } }),
@@ -96,16 +86,11 @@ export default function Dashboard() {
           pending: pendingApprovals.length,
         })
 
-        // Use real ECOs if available, else samples
-        if (Array.isArray(ecos) && ecos.length > 0) {
-          setRecentEcos(ecos.slice(0, 5))
-        } else {
-          setRecentEcos(SAMPLE_ECOS)
-        }
-      } catch {
-        // Backend not ready — use defaults
-        setStats({ products: 24, boms: 18, ecos: 7, pending: 3 })
-        setRecentEcos(SAMPLE_ECOS)
+        setRecentEcos(Array.isArray(ecos) ? ecos.slice(0, 5) : [])
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error)
+        setStats({ products: 0, boms: 0, ecos: 0, pending: 0 })
+        setRecentEcos([])
       } finally {
         setIsLoading(false)
       }

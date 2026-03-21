@@ -12,12 +12,6 @@ import {
 } from '@/components/ui/table'
 import { History, GitBranch } from 'lucide-react'
 
-const SAMPLE_VERSIONS = [
-  { version: 3, changed_at: '2026-03-20T10:00:00Z', changed_by: 'John Doe', eco_title: 'Cost Reduction', fields_changed: ['cost_price'], is_current: true },
-  { version: 2, changed_at: '2026-03-15T14:30:00Z', changed_by: 'Sarah Chen', eco_title: 'Price Update Q4', fields_changed: ['sale_price', 'cost_price'], is_current: false },
-  { version: 1, changed_at: '2026-03-01T09:00:00Z', changed_by: 'Admin', eco_title: null, fields_changed: [], is_current: false },
-]
-
 export default function VersionHistory({ productId, productName }) {
   const [versions, setVersions] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -29,9 +23,10 @@ export default function VersionHistory({ productId, productName }) {
       try {
         const res = await getProductVersions(productId)
         const data = res.data?.results || res.data || []
-        setVersions(Array.isArray(data) && data.length > 0 ? data : SAMPLE_VERSIONS)
-      } catch {
-        setVersions(SAMPLE_VERSIONS)
+        setVersions(Array.isArray(data) ? data : [])
+      } catch (error) {
+        console.error('Failed to fetch version history:', error)
+        setVersions([])
       } finally {
         setIsLoading(false)
       }

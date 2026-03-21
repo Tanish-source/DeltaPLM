@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, filters
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.db.models import Q
 
 from .models import Product, BillOfMaterials
 from .serializers import ProductSerializer, BillOfMaterialsSerializer
@@ -66,6 +67,18 @@ class ProductViewSet(viewsets.ModelViewSet):
             ProductAttachment.objects.create(product=product, file=f, name=f.name)
         log_audit(AuditLog.Action.VERSION_CREATED, 'Product', product.id, self.request.user, description=f"Created Product {product.name}")
 
+    def update(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Direct modifications to Master Data are restricted. Please use an ECO.")
+        
+    def partial_update(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Direct modifications to Master Data are restricted. Please use an ECO.")
+        
+    def destroy(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Direct deletions are restricted. Please use an ECO to archive.")
+
     def perform_update(self, serializer):
         from audits.models import AuditLog
         from audits.services import log_audit
@@ -82,13 +95,33 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def versions(self, request, pk=None):
         """Returns all versions of a specific product family."""
+        from audits.models import AuditLog
+
         product = self.get_object()
-        # The parent logic: either this is the parent, or it has a parent.
-        # Find the root parent, then return all items with that parent + the parent itself.
         root_parent_id = product.parent_id if product.parent_id else product.id
-        versions = Product.objects.filter(models.Q(id=root_parent_id) | models.Q(parent_id=root_parent_id)).order_by('-version')
-        serializer = self.get_serializer(versions, many=True)
-        return Response(serializer.data)
+        versions = Product.objects.filter(Q(id=root_parent_id) | Q(parent_id=root_parent_id)).order_by('-version')
+
+        data = []
+        for version in versions:
+            latest_audit = AuditLog.objects.filter(
+                record_type='Product',
+                record_id=version.id,
+            ).select_related('user').order_by('-timestamp').first()
+
+            changed_by = "System"
+            if latest_audit and latest_audit.user:
+                changed_by = latest_audit.user.get_full_name().strip() or latest_audit.user.username
+
+            data.append({
+                "id": version.id,
+                "version": version.version,
+                "is_current": version.is_active,
+                "changed_at": version.updated_at,
+                "changed_by": changed_by,
+                "eco_title": None,
+                "fields_changed": [],
+            })
+        return Response(data)
 
 
     @action(detail=True, methods=['get'])
@@ -135,6 +168,18 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
         from audits.services import log_audit
         bom = serializer.save()
         log_audit(AuditLog.Action.VERSION_CREATED, 'BoM', bom.id, self.request.user, description=f"Created BoM for {bom.product.name}")
+
+    def update(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Direct modifications to Master Data are restricted. Please use an ECO.")
+        
+    def partial_update(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Direct modifications to Master Data are restricted. Please use an ECO.")
+        
+    def destroy(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Direct deletions are restricted. Please use an ECO to archive.")
 
     def perform_update(self, serializer):
         from audits.models import AuditLog
