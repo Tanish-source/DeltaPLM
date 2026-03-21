@@ -1,24 +1,78 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import ProtectedRoute from '@/components/shared/ProtectedRoute'
+import AppLayout from '@/components/layout/AppLayout'
+import Login from '@/pages/Login'
+import Signup from '@/pages/Signup'
+import Dashboard from '@/pages/Dashboard'
+import ProductList from '@/pages/products/ProductList'
+import ProductForm from '@/pages/products/ProductForm'
+import BomList from '@/pages/bom/BomList'
+import BomForm from '@/pages/bom/BomForm'
+import ComingSoon from '@/pages/ComingSoon'
+import { ROLES } from '@/lib/constants'
 
 function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Routes>
-        <Route path="/" element={
-          <div className="flex items-center justify-center min-h-screen">
-            <div className="text-center space-y-4">
-              <h1 className="text-4xl font-bold tracking-tight">DeltaPLM</h1>
-              <p className="text-muted-foreground text-lg">
-                Product Lifecycle Management System
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Phase 0 scaffold complete — ready for Phase 1
-              </p>
-            </div>
-          </div>
-        } />
-      </Routes>
-    </div>
+    <Routes>
+      {/* ── Public Routes ──────────────────────────────── */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+
+      {/* ── Protected Routes (wrapped in AppLayout) ────── */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        {/* Dashboard */}
+        <Route path="/" element={<Dashboard />} />
+
+        {/* Master Data — Phase 2 */}
+        <Route path="/products" element={<ProductList />} />
+        <Route path="/products/new" element={<ProductForm />} />
+        <Route path="/products/:id" element={<ProductForm />} />
+        <Route path="/boms" element={<BomList />} />
+        <Route path="/boms/new" element={<BomForm />} />
+        <Route path="/boms/:id" element={<BomForm />} />
+
+        {/* ECOs — Phase 3 */}
+        <Route path="/ecos" element={<ComingSoon />} />
+        <Route path="/ecos/new" element={<ComingSoon />} />
+        <Route path="/ecos/:id" element={<ComingSoon />} />
+        <Route path="/ecos/:id/detail" element={<ComingSoon />} />
+
+        {/* ECO Stages — Phase 4 (Admin only) */}
+        <Route
+          path="/stages"
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]}>
+              <ComingSoon />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Comparison — Phase 7 */}
+        <Route path="/comparison/:ecoId" element={<ComingSoon />} />
+
+        {/* Reports — Phase 9 */}
+        <Route path="/reports" element={<ComingSoon />} />
+
+        {/* Audit Log — Phase 8 (Admin & Approver) */}
+        <Route
+          path="/audit"
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.APPROVER]}>
+              <ComingSoon />
+            </ProtectedRoute>
+          }
+        />
+      </Route>
+
+      {/* ── Catch-all → Dashboard ──────────────────────── */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
 
