@@ -1,18 +1,22 @@
-import { ECO_STATUS_LABELS, ECO_STATUS_STYLES } from '@/lib/constants'
+import React from 'react';
+import { Badge } from '@/components/ui/badge';
+import { ECO_STATUS_LABELS, ECO_STATUS_STYLES } from '@/lib/constants';
 
-/**
- * Colored badge for ECO statuses.
- * @param {{ status: string, className?: string }} props
- */
-export default function StatusBadge({ status, className = '' }) {
-  const label = ECO_STATUS_LABELS[status] || status
-  const style = ECO_STATUS_STYLES[status] || 'bg-secondary text-secondary-foreground'
-
+export const StatusBadge = ({ status, className = '' }) => {
+  const label = ECO_STATUS_LABELS[status] || status || 'Unknown';
+  
+  // Use tailwind classes defined in constants, default to a gray outline if missing
+  const statusClassName = ECO_STATUS_STYLES[status] || 'bg-gray-50 text-muted-foreground border-gray-200';
+  
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${style} ${className}`}
+    <Badge 
+      variant="outline"
+      className={`font-medium ${statusClassName} ${className}`}
     >
       {label}
-    </span>
-  )
-}
+    </Badge>
+  );
+};
+
+export default StatusBadge;
+
