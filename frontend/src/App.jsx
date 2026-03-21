@@ -8,6 +8,10 @@ import ProductList from '@/pages/products/ProductList'
 import ProductForm from '@/pages/products/ProductForm'
 import BomList from '@/pages/bom/BomList'
 import BomForm from '@/pages/bom/BomForm'
+import EcoList from '@/pages/eco/EcoList'
+import EcoForm from '@/pages/eco/EcoForm'
+import EcoDetail from '@/pages/eco/EcoDetail'
+import StageSettings from '@/pages/stages/StageSettings'
 import ComingSoon from '@/pages/ComingSoon'
 import { ROLES } from '@/lib/constants'
 
@@ -38,17 +42,19 @@ function App() {
         <Route path="/boms/:id" element={<BomForm />} />
 
         {/* ECOs — Phase 3 */}
-        <Route path="/ecos" element={<ComingSoon />} />
-        <Route path="/ecos/new" element={<ComingSoon />} />
-        <Route path="/ecos/:id" element={<ComingSoon />} />
-        <Route path="/ecos/:id/detail" element={<ComingSoon />} />
+        <Route path="/ecos" element={<EcoList />} />
+        <Route path="/ecos/new" element={<EcoForm />} />
+        <Route path="/ecos/:id" element={<EcoForm />} />
+
+        {/* ECO Detail — Phase 5 */}
+        <Route path="/ecos/:id/detail" element={<EcoDetail />} />
 
         {/* ECO Stages — Phase 4 (Admin only) */}
         <Route
           path="/stages"
           element={
             <ProtectedRoute roles={[ROLES.ADMIN]}>
-              <ComingSoon />
+              <StageSettings />
             </ProtectedRoute>
           }
         />
@@ -77,3 +83,4 @@ function App() {
 }
 
 export default App
+
