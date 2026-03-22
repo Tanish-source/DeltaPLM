@@ -9,3 +9,4 @@ export const createProduct = (data) => api.post('/products/', data, {
 })
 export const updateProduct = (id, data) => api.put(`/products/${id}/`, data)
 export const getProductVersions = (id) => api.get(`/products/${id}/versions/`)
+export const rollbackProductVersion = (id, targetId) => api.post(`/products/${id}/rollback/`, { target_id: targetId })

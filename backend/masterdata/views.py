@@ -2,9 +2,10 @@ from rest_framework import viewsets, permissions, filters
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.db import transaction
 from django.db.models import Q
 
-from .models import Product, BillOfMaterials
+from .models import Product, ProductAttachment, BillOfMaterials, BomComponent, BomOperation
 from .serializers import ProductSerializer, BillOfMaterialsSerializer
 
 # We'll use the Operations readonly permission here
@@ -31,6 +32,9 @@ class IsAdminOrEngineeringWriteOrReadOnly(permissions.BasePermission):
         # Read operations are always allowed
         if request.method in permissions.SAFE_METHODS:
             return True
+
+        if getattr(view, 'action', None) == 'rollback':
+            return request.user.role in ['engineering', 'admin'] or request.user.is_superuser
             
         # For write operations (PUT, PATCH, DELETE), deny if archived
         if getattr(obj, 'is_active', True) is False:
@@ -150,6 +154,99 @@ class ProductViewSet(viewsets.ModelViewSet):
             "version_new": target_product.version,
             "changes": changes
         })
+
+    @action(detail=True, methods=['post'])
+    def rollback(self, request, pk=None):
+        from audits.models import AuditLog
+        from audits.services import log_audit
+        from rest_framework.exceptions import PermissionDenied
+
+        if getattr(request.user, 'role', '') not in ['engineering', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            raise PermissionDenied("Only Engineering or Admin can rollback Product versions.")
+
+        current_product = self.get_object()
+        target_id = request.data.get('target_id')
+        if not target_id:
+            return Response({"error": "target_id is required."}, status=400)
+
+        root_parent_id = current_product.parent_id if current_product.parent_id else current_product.id
+        family_versions = Product.objects.filter(Q(id=root_parent_id) | Q(parent_id=root_parent_id))
+        target_product = family_versions.filter(id=target_id).first()
+        if not target_product:
+            return Response({"error": "Target product version not found in the same version family."}, status=404)
+
+        current_active = family_versions.filter(is_active=True).order_by('-version', '-id').first()
+        next_version = (family_versions.order_by('-version').first().version if family_versions.exists() else 0) + 1
+
+        with transaction.atomic():
+            new_product = Product.objects.get(id=target_product.id)
+            new_product.pk = None
+            new_product.version = next_version
+            new_product.parent = target_product.parent or target_product
+            new_product.is_active = True
+            new_product.save()
+
+            for attachment in target_product.attachments.all():
+                ProductAttachment.objects.create(
+                    product=new_product,
+                    file=attachment.file,
+                    name=attachment.name,
+                )
+
+            if current_active:
+                for active_bom in current_active.boms.filter(is_active=True):
+                    active_bom.is_active = False
+                    active_bom.save(update_fields=['is_active'])
+                    log_audit(
+                        AuditLog.Action.RECORD_ARCHIVED,
+                        'BoM',
+                        active_bom.id,
+                        request.user,
+                        description=f"Archived BoM during product rollback to Product v{target_product.version}.",
+                    )
+
+            for source_bom in target_product.boms.all():
+                new_bom = BillOfMaterials.objects.get(id=source_bom.id)
+                new_bom.pk = None
+                new_bom.product = new_product
+                new_bom.reference = ''
+                new_bom.is_active = True
+                new_bom.save()
+
+                for component in source_bom.components.all():
+                    BomComponent.objects.create(
+                        bom=new_bom,
+                        component_product=component.component_product,
+                        quantity=component.quantity,
+                    )
+                for operation in source_bom.operations.all():
+                    BomOperation.objects.create(
+                        bom=new_bom,
+                        name=operation.name,
+                        duration=operation.duration,
+                        work_center=operation.work_center,
+                    )
+
+            if current_active and current_active.id != new_product.id:
+                current_active.is_active = False
+                current_active.save(update_fields=['is_active'])
+                log_audit(
+                    AuditLog.Action.RECORD_ARCHIVED,
+                    'Product',
+                    current_active.id,
+                    request.user,
+                    description=f"Archived Product {current_active.name} during rollback.",
+                )
+
+            log_audit(
+                AuditLog.Action.VERSION_CREATED,
+                'Product',
+                new_product.id,
+                request.user,
+                description=f"Rolled back Product to version {target_product.version}; created new version {new_product.version}.",
+            )
+
+        return Response(ProductSerializer(new_product, context={'request': request}).data)
 
 class BillOfMaterialsViewSet(viewsets.ModelViewSet):
     """
@@ -293,3 +390,68 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
             "components": components,
             "operations": operations
         })
+
+    @action(detail=True, methods=['post'])
+    def rollback(self, request, pk=None):
+        from audits.models import AuditLog
+        from audits.services import log_audit
+        from rest_framework.exceptions import PermissionDenied
+
+        if getattr(request.user, 'role', '') not in ['engineering', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            raise PermissionDenied("Only Engineering or Admin can rollback BoM versions.")
+
+        current_bom = self.get_object()
+        target_id = request.data.get('target_id')
+        if not target_id:
+            return Response({"error": "target_id is required."}, status=400)
+
+        family_versions = BillOfMaterials.objects.filter(product_id=current_bom.product_id)
+        target_bom = family_versions.filter(id=target_id).first()
+        if not target_bom:
+            return Response({"error": "Target BoM version not found for the same product."}, status=404)
+
+        current_active = family_versions.filter(is_active=True).order_by('-version', '-id').first()
+        next_version = (family_versions.order_by('-version').first().version if family_versions.exists() else 0) + 1
+
+        with transaction.atomic():
+            new_bom = BillOfMaterials.objects.get(id=target_bom.id)
+            new_bom.pk = None
+            new_bom.version = next_version
+            new_bom.reference = ''
+            new_bom.is_active = True
+            new_bom.save()
+
+            for component in target_bom.components.all():
+                BomComponent.objects.create(
+                    bom=new_bom,
+                    component_product=component.component_product,
+                    quantity=component.quantity,
+                )
+            for operation in target_bom.operations.all():
+                BomOperation.objects.create(
+                    bom=new_bom,
+                    name=operation.name,
+                    duration=operation.duration,
+                    work_center=operation.work_center,
+                )
+
+            if current_active and current_active.id != new_bom.id:
+                current_active.is_active = False
+                current_active.save(update_fields=['is_active'])
+                log_audit(
+                    AuditLog.Action.RECORD_ARCHIVED,
+                    'BoM',
+                    current_active.id,
+                    request.user,
+                    description=f"Archived BoM {current_active.reference} during rollback.",
+                )
+
+            log_audit(
+                AuditLog.Action.VERSION_CREATED,
+                'BoM',
+                new_bom.id,
+                request.user,
+                description=f"Rolled back BoM to version {target_bom.version}; created new version {new_bom.version}.",
+            )
+
+        return Response(BillOfMaterialsSerializer(new_bom, context={'request': request}).data)

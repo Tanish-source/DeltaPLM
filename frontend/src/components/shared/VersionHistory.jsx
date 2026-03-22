@@ -1,35 +1,67 @@
 import { useState, useEffect } from 'react'
-import { getProductVersions } from '@/api/products'
-import { getBomVersions } from '@/api/boms'
+import { useNavigate } from 'react-router-dom'
+import { getProductVersions, rollbackProductVersion } from '@/api/products'
+import { getBomVersions, rollbackBomVersion } from '@/api/boms'
+import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { History, GitBranch } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { History, GitBranch, RotateCcw } from 'lucide-react'
+import { ROLES } from '@/lib/constants'
 
 export default function VersionHistory({ recordId, recordName, recordType = 'product' }) {
+  const navigate = useNavigate()
+  const { hasRole } = useAuth()
   const [versions, setVersions] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [rollbackLoadingId, setRollbackLoadingId] = useState(null)
+  const canRollback = hasRole([ROLES.ENGINEERING, ROLES.ADMIN])
+
+  const fetchVersions = async () => {
+    if (!recordId) return
+
+    setIsLoading(true)
+    try {
+      const res = recordType === 'bom'
+        ? await getBomVersions(recordId)
+        : await getProductVersions(recordId)
+      const data = res.data?.results || res.data || []
+      setVersions(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Failed to fetch version history:', error)
+      setVersions([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!recordId) return
 
-    const fetchVersions = async () => {
-      setIsLoading(true)
-      try {
-        const res = recordType === 'bom'
-          ? await getBomVersions(recordId)
-          : await getProductVersions(recordId)
-        const data = res.data?.results || res.data || []
-        setVersions(Array.isArray(data) ? data : [])
-      } catch (error) {
-        console.error('Failed to fetch version history:', error)
-        setVersions([])
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     fetchVersions()
   }, [recordId, recordType])
+
+  const handleRollback = async (targetId) => {
+    setRollbackLoadingId(targetId)
+    try {
+      let response
+      if (recordType === 'bom') {
+        response = await rollbackBomVersion(recordId, targetId)
+      } else {
+        response = await rollbackProductVersion(recordId, targetId)
+      }
+      const newId = response?.data?.id
+      if (newId) {
+        navigate(recordType === 'bom' ? `/boms/${newId}` : `/products/${newId}`)
+        return
+      }
+      await fetchVersions()
+    } catch (error) {
+      console.error('Failed to rollback version:', error)
+    } finally {
+      setRollbackLoadingId(null)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -122,6 +154,22 @@ export default function VersionHistory({ recordId, recordName, recordType = 'pro
                             {field.replace(/_/g, ' ')}
                           </Badge>
                         ))}
+                      </div>
+                    )}
+
+                    {!version.is_current && canRollback && (
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRollback(version.id)}
+                          disabled={rollbackLoadingId === version.id}
+                          className="gap-1.5"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          {rollbackLoadingId === version.id ? 'Rolling back...' : 'Rollback to This Version'}
+                        </Button>
                       </div>
                     )}
                   </div>
