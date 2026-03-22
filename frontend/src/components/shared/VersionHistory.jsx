@@ -1,27 +1,23 @@
 import { useState, useEffect } from 'react'
 import { getProductVersions } from '@/api/products'
+import { getBomVersions } from '@/api/boms'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { History, GitBranch } from 'lucide-react'
 
-export default function VersionHistory({ productId, productName }) {
+export default function VersionHistory({ recordId, recordName, recordType = 'product' }) {
   const [versions, setVersions] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (!productId) return
+    if (!recordId) return
+
     const fetchVersions = async () => {
       setIsLoading(true)
       try {
-        const res = await getProductVersions(productId)
+        const res = recordType === 'bom'
+          ? await getBomVersions(recordId)
+          : await getProductVersions(recordId)
         const data = res.data?.results || res.data || []
         setVersions(Array.isArray(data) ? data : [])
       } catch (error) {
@@ -31,8 +27,9 @@ export default function VersionHistory({ productId, productName }) {
         setIsLoading(false)
       }
     }
+
     fetchVersions()
-  }, [productId])
+  }, [recordId, recordType])
 
   if (isLoading) {
     return (
@@ -49,9 +46,9 @@ export default function VersionHistory({ productId, productName }) {
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <History className="h-4 w-4" /> Version History
-          {productName && (
+          {recordName && (
             <span className="text-muted-foreground font-normal">
-              — {productName}
+              - {recordName}
             </span>
           )}
         </CardTitle>
@@ -63,57 +60,66 @@ export default function VersionHistory({ productId, productName }) {
           </p>
         ) : (
           <div className="relative">
-            {/* Timeline line */}
             <div className="absolute left-[19px] top-0 bottom-0 w-px bg-border" />
 
             <div className="space-y-0">
-              {versions.map((v, i) => (
-                <div key={v.version} className="relative flex gap-4 pb-6 last:pb-0">
-                  {/* Timeline dot */}
-                  <div className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 ${
-                    v.is_current
-                      ? 'bg-primary border-primary text-primary-foreground'
-                      : 'bg-background border-border text-muted-foreground'
-                  }`}>
+              {versions.map((version) => (
+                <div key={version.id || version.version} className="relative flex gap-4 pb-6 last:pb-0">
+                  <div
+                    className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 ${
+                      version.is_current
+                        ? 'bg-primary border-primary text-primary-foreground'
+                        : 'bg-background border-border text-muted-foreground'
+                    }`}
+                  >
                     <GitBranch className="h-4 w-4" />
                   </div>
 
-                  {/* Content */}
-                  <div className={`flex-1 rounded-lg border p-4 ${
-                    v.is_current ? 'border-primary/20 bg-primary/5' : 'bg-card'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">
-                          Version {v.version}
-                        </span>
-                        {v.is_current && (
+                  <div
+                    className={`flex-1 rounded-lg border p-4 ${
+                      version.is_current ? 'border-primary/20 bg-primary/5' : 'bg-card'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1 gap-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">Version {version.version}</span>
+                        {version.reference && (
+                          <Badge variant="outline" className="text-xs font-normal">
+                            {version.reference}
+                          </Badge>
+                        )}
+                        {version.is_current && (
                           <Badge variant="default" className="text-xs">
                             Current
                           </Badge>
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(v.changed_at).toLocaleDateString('en-US', {
-                          month: 'short', day: 'numeric', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
+                        {new Date(version.changed_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
                         })}
                       </span>
                     </div>
+
                     <p className="text-sm text-muted-foreground">
-                      by <span className="font-medium text-foreground">{v.changed_by}</span>
-                      {v.eco_title && (
+                      by <span className="font-medium text-foreground">{version.changed_by}</span>
+                      {version.eco_title && (
                         <>
                           {' '}via ECO:{' '}
-                          <span className="font-medium text-foreground">{v.eco_title}</span>
+                          <span className="font-medium text-foreground">{version.eco_title}</span>
                         </>
                       )}
                     </p>
-                    {v.fields_changed && v.fields_changed.length > 0 && (
+
+                    {version.fields_changed && version.fields_changed.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        {v.fields_changed.map((f) => (
-                          <Badge key={f} variant="outline" className="text-xs font-normal">
-                            {f.replace(/_/g, ' ')}
+                        {version.fields_changed.map((field) => (
+                          <Badge key={field} variant="outline" className="text-xs font-normal">
+                            {field.replace(/_/g, ' ')}
                           </Badge>
                         ))}
                       </div>

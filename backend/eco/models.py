@@ -33,9 +33,9 @@ class ECO(models.Model):
         BOM     = 'bom', 'Bill of Materials'
 
     class Status(models.TextChoices):
-        NEW      = 'new', 'New'
+        NEW      = 'new', 'Draft'
         APPROVAL = 'approval', 'In Approval'
-        APPROVED = 'approved', 'Approved'
+        APPROVED = 'approved', 'Ready'
         APPLIED  = 'applied', 'Applied'
         REJECTED = 'rejected', 'Rejected'
 
@@ -63,6 +63,23 @@ class ECOProductChange(models.Model):
     old_value      = models.TextField(blank=True)
     new_value      = models.TextField(blank=True)
 
+class ECOProductAttachmentChange(models.Model):
+    class ChangeType(models.TextChoices):
+        ADD = 'add', 'Add'
+        REMOVE = 'remove', 'Remove'
+
+    eco = models.ForeignKey(ECO, related_name='product_attachment_changes', on_delete=models.CASCADE)
+    change_type = models.CharField(max_length=10, choices=ChangeType.choices)
+    original_attachment = models.ForeignKey(
+        'masterdata.ProductAttachment',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='eco_attachment_changes',
+    )
+    attachment_name = models.CharField(max_length=255, blank=True)
+    file = models.FileField(upload_to='eco_product_attachments/', null=True, blank=True)
+
 class ECOBomComponentChange(models.Model):
     class ChangeType(models.TextChoices):
         ADD    = 'add', 'Add'
@@ -84,8 +101,11 @@ class ECOBomOperationChange(models.Model):
     eco            = models.ForeignKey(ECO, related_name='bom_operation_changes', on_delete=models.CASCADE)
     change_type    = models.CharField(max_length=10, choices=ChangeType.choices)
     operation_name = models.CharField(max_length=255)
+    new_operation_name = models.CharField(max_length=255, blank=True)
     old_duration   = models.DurationField(null=True, blank=True)
     new_duration   = models.DurationField(null=True, blank=True)
+    old_work_center = models.CharField(max_length=255, blank=True)
+    new_work_center = models.CharField(max_length=255, blank=True)
 
 class ECOApproval(models.Model):
     class Decision(models.TextChoices):

@@ -1,10 +1,11 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import ECO, ECOApproval, Stage, StageApprover, StageRule
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from .models import ECO, ECOApproval, ECOProductAttachmentChange, Stage, StageApprover, StageRule
 from .serializers import (
     ECOSerializer, ECOApprovalSerializer, StageSerializer,
-    StageApproverSerializer, StageRuleSerializer
+    StageApproverSerializer, StageRuleSerializer, ECOProductAttachmentChangeSerializer
 )
 from .services import submit_eco_to_workflow, approve_stage, reject_stage, validate_stage, apply_eco, ensure_default_stages
 
@@ -64,6 +65,7 @@ class ECOViewSet(viewsets.ModelViewSet):
     queryset = ECO.objects.all().order_by('-created_at')
     serializer_class = ECOSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     filterset_fields = ['eco_type', 'status', 'product']
     search_fields = ['title']
 
@@ -161,6 +163,78 @@ class ECOViewSet(viewsets.ModelViewSet):
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=['get', 'post'], url_path='attachment-changes')
+    def attachment_changes(self, request, pk=None):
+        eco = self.get_object()
+        if request.method == 'GET':
+            serializer = ECOProductAttachmentChangeSerializer(
+                eco.product_attachment_changes.all().order_by('id'),
+                many=True,
+                context={'request': request},
+            )
+            return Response(serializer.data)
+
+        if getattr(request.user, 'role', '') not in ['engineering', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Engineering or Admin can edit ECO attachments.")
+        if eco.status != ECO.Status.NEW:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Attachment changes can only be edited while the ECO is in Draft.")
+        if eco.eco_type != ECO.ECOType.PRODUCT:
+            return Response({'error': 'Attachment changes are only supported for Product ECOs.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        change_type = request.data.get('change_type')
+        if change_type == ECOProductAttachmentChange.ChangeType.REMOVE:
+            attachment_id = request.data.get('original_attachment')
+            if not attachment_id:
+                return Response({'error': 'original_attachment is required for remove changes.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            original_attachment = eco.product.attachments.filter(id=attachment_id).first()
+            if not original_attachment:
+                return Response({'error': 'Selected attachment does not belong to the ECO product.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            change, _ = ECOProductAttachmentChange.objects.update_or_create(
+                eco=eco,
+                change_type=ECOProductAttachmentChange.ChangeType.REMOVE,
+                original_attachment=original_attachment,
+                defaults={'attachment_name': original_attachment.name},
+            )
+            serializer = ECOProductAttachmentChangeSerializer(change, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        if change_type == ECOProductAttachmentChange.ChangeType.ADD:
+            file_obj = request.FILES.get('file')
+            if not file_obj:
+                return Response({'error': 'file is required for add changes.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            change = ECOProductAttachmentChange.objects.create(
+                eco=eco,
+                change_type=ECOProductAttachmentChange.ChangeType.ADD,
+                attachment_name=request.data.get('attachment_name') or file_obj.name,
+                file=file_obj,
+            )
+            serializer = ECOProductAttachmentChangeSerializer(change, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response({'error': 'Unsupported attachment change type.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['delete'], url_path=r'attachment-changes/(?P<change_id>[^/.]+)')
+    def delete_attachment_change(self, request, pk=None, change_id=None):
+        if getattr(request.user, 'role', '') not in ['engineering', 'admin'] and not getattr(request.user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Engineering or Admin can edit ECO attachments.")
+
+        eco = self.get_object()
+        if eco.status != ECO.Status.NEW:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Attachment changes can only be edited while the ECO is in Draft.")
+
+        change = eco.product_attachment_changes.filter(id=change_id).first()
+        if not change:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        change.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=['get'], url_path='diff')
     def diff(self, request, pk=None):
         eco = self.get_object()
@@ -183,7 +257,18 @@ class ECOViewSet(viewsets.ModelViewSet):
                 "product_name": eco.product.name,
                 "old_version": version_old,
                 "new_version": version_new,
-                "fields": fields
+                "fields": fields,
+                "attachments": [
+                    {
+                        "id": change.id,
+                        "change": change.change_type,
+                        "name": change.attachment_name or (change.original_attachment.name if change.original_attachment else None),
+                        "old_name": change.original_attachment.name if change.original_attachment else None,
+                        "new_name": change.attachment_name or (change.original_attachment.name if change.original_attachment else None),
+                        "file": request.build_absolute_uri(change.file.url) if change.file else None,
+                    }
+                    for change in eco.product_attachment_changes.all().order_by('id')
+                ],
             })
             
         elif eco.eco_type == ECO.ECOType.BOM:
@@ -199,11 +284,19 @@ class ECOViewSet(viewsets.ModelViewSet):
             operations = []
             for c in eco.bom_operation_changes.all():
                 operations.append({
-                    "name": c.operation_name,
+                    "name": c.new_operation_name or c.operation_name,
+                    "old_name": c.operation_name,
+                    "new_name": c.new_operation_name or c.operation_name,
                     "old_duration": str(c.old_duration) if c.old_duration is not None else None,
                     "new_duration": str(c.new_duration) if c.new_duration is not None else None,
+                    "old_work_center": c.old_work_center or None,
+                    "new_work_center": c.new_work_center or None,
                     "change": c.change_type,
-                    "changed": c.old_duration != c.new_duration
+                    "changed": (
+                        c.old_duration != c.new_duration
+                        or c.operation_name != (c.new_operation_name or c.operation_name)
+                        or (c.old_work_center or '') != (c.new_work_center or '')
+                    )
                 })
                 
             bom_version_old = eco.bom.version if eco.bom else 1
@@ -227,6 +320,7 @@ class ECOViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(eco)
         return Response({
             'product_changes': serializer.data.get('product_changes', []),
+            'product_attachment_changes': serializer.data.get('product_attachment_changes', []),
             'bom_component_changes': serializer.data.get('bom_component_changes', []),
             'bom_operation_changes': serializer.data.get('bom_operation_changes', []),
         })

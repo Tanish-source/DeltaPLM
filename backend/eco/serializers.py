@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Stage, StageApprover, StageRule, ECO, 
-    ECOProductChange, ECOBomComponentChange, ECOBomOperationChange, ECOApproval
+    ECOProductChange, ECOProductAttachmentChange, ECOBomComponentChange, ECOBomOperationChange, ECOApproval
 )
 
 class StageApproverSerializer(serializers.ModelSerializer):
@@ -37,6 +37,20 @@ class ECOProductChangeSerializer(serializers.ModelSerializer):
         model = ECOProductChange
         fields = ['id', 'field_name', 'old_value', 'new_value']
 
+class ECOProductAttachmentChangeSerializer(serializers.ModelSerializer):
+    original_attachment_name = serializers.CharField(source='original_attachment.name', read_only=True)
+
+    class Meta:
+        model = ECOProductAttachmentChange
+        fields = [
+            'id',
+            'change_type',
+            'original_attachment',
+            'original_attachment_name',
+            'attachment_name',
+            'file',
+        ]
+
 class ECOBomComponentChangeSerializer(serializers.ModelSerializer):
     component_product_name = serializers.CharField(source='component_product.name', read_only=True)
 
@@ -47,7 +61,16 @@ class ECOBomComponentChangeSerializer(serializers.ModelSerializer):
 class ECOBomOperationChangeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ECOBomOperationChange
-        fields = ['id', 'change_type', 'operation_name', 'old_duration', 'new_duration']
+        fields = [
+            'id',
+            'change_type',
+            'operation_name',
+            'new_operation_name',
+            'old_duration',
+            'new_duration',
+            'old_work_center',
+            'new_work_center',
+        ]
 
 class ECOSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
@@ -58,8 +81,10 @@ class ECOSerializer(serializers.ModelSerializer):
     responsible_user_username = serializers.CharField(source='responsible_user.username', read_only=True, default=None)
     current_stage_name = serializers.CharField(source='current_stage.name', read_only=True)
     new_version = serializers.SerializerMethodField()
+    applied_record_id = serializers.SerializerMethodField()
     
     product_changes = ECOProductChangeSerializer(many=True, required=False)
+    product_attachment_changes = ECOProductAttachmentChangeSerializer(many=True, read_only=True)
     bom_component_changes = ECOBomComponentChangeSerializer(many=True, required=False)
     bom_operation_changes = ECOBomOperationChangeSerializer(many=True, required=False)
     
@@ -77,8 +102,8 @@ class ECOSerializer(serializers.ModelSerializer):
             'status', 'current_stage', 'current_stage_name', 'rejected_stage', 'effective_date', 'version_update',
             'created_by', 'created_by_username', 'created_by_name', 'responsible_user', 'responsible_user_username',
             'created_at', 'updated_at',
-            'product_changes', 'bom_component_changes', 'bom_operation_changes',
-            'approvals', 'stage_summary', 'new_version',
+            'product_changes', 'product_attachment_changes', 'bom_component_changes', 'bom_operation_changes',
+            'approvals', 'stage_summary', 'new_version', 'applied_record_id',
             'can_approve', 'can_reject', 'can_validate', 'can_apply'
         ]
         read_only_fields = ['status', 'created_by', 'effective_date']
@@ -117,8 +142,6 @@ class ECOSerializer(serializers.ModelSerializer):
             has_bom_component_changes = has_bom_component_changes or self.instance.bom_component_changes.exists()
             has_bom_operation_changes = has_bom_operation_changes or self.instance.bom_operation_changes.exists()
 
-        if eco_type == 'product' and not has_product_changes:
-            raise serializers.ValidationError({'product_changes': 'At least one product change is required.'})
         if eco_type == 'bom' and not (has_bom_component_changes or has_bom_operation_changes):
             raise serializers.ValidationError({
                 'bom_component_changes': 'At least one BoM component or operation change is required.'
@@ -135,13 +158,33 @@ class ECOSerializer(serializers.ModelSerializer):
         stages = Stage.objects.filter(is_active=True).order_by('sequence')
         result = []
         for stage in stages:
-            stage_approvals = obj.approvals.filter(stage=stage)
-            if not stage_approvals.exists():
+            if obj.status == ECO.Status.NEW:
                 result.append({
                     'stage_id': stage.id,
                     'stage_name': stage.name,
                     'sequence': stage.sequence,
-                    'status': 'upcoming',   # not yet reached
+                    'status': 'upcoming',
+                })
+                continue
+
+            stage_approvals = obj.approvals.filter(stage=stage)
+            if obj.status == ECO.Status.APPLIED and obj.current_stage_id == stage.id:
+                result.append({
+                    'stage_id': stage.id,
+                    'stage_name': stage.name,
+                    'sequence': stage.sequence,
+                    'status': 'approved',
+                    'approved_count': stage_approvals.filter(decision='approved').count(),
+                    'total_count': max(stage_approvals.count(), stage.approvers.count()),
+                })
+                continue
+            if not stage_approvals.exists():
+                status_value = 'current' if obj.status == ECO.Status.APPROVAL and obj.current_stage_id == stage.id else 'upcoming'
+                result.append({
+                    'stage_id': stage.id,
+                    'stage_name': stage.name,
+                    'sequence': stage.sequence,
+                    'status': status_value,
                 })
                 continue
             total = stage_approvals.count()
@@ -217,6 +260,56 @@ class ECOSerializer(serializers.ModelSerializer):
             return obj.bom.version + 1 if obj.version_update else obj.bom.version
         return None
 
+    def get_applied_record_id(self, obj):
+        if obj.eco_type == ECO.ECOType.PRODUCT:
+            if not obj.version_update or obj.status != ECO.Status.APPLIED:
+                return obj.product_id
+
+            from masterdata.models import Product
+
+            next_version = obj.product.version + 1
+            applied_product = Product.objects.filter(
+                parent_id=obj.product.parent_id or obj.product_id,
+                version=next_version,
+                is_active=True,
+            ).order_by('-id').first()
+
+            if applied_product:
+                return applied_product.id
+
+            fallback_product = Product.objects.filter(
+                parent_id=obj.product.parent_id or obj.product_id,
+                is_active=True,
+            ).order_by('-version', '-id').first()
+            return fallback_product.id if fallback_product else obj.product_id
+
+        if obj.eco_type != ECO.ECOType.BOM or not obj.bom_id:
+            return None
+
+        if not obj.version_update:
+            return obj.bom_id
+
+        if obj.status != ECO.Status.APPLIED:
+            return obj.bom_id
+
+        from masterdata.models import BillOfMaterials
+
+        next_version = obj.bom.version + 1
+        applied_bom = BillOfMaterials.objects.filter(
+            product_id=obj.product_id,
+            version=next_version,
+            is_active=True,
+        ).order_by('-id').first()
+
+        if applied_bom:
+            return applied_bom.id
+
+        fallback_bom = BillOfMaterials.objects.filter(
+            product_id=obj.product_id,
+            is_active=True,
+        ).order_by('-version', '-id').first()
+        return fallback_bom.id if fallback_bom else obj.bom_id
+
     def _approval_capable_user(self):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
@@ -251,8 +344,7 @@ class ECOSerializer(serializers.ModelSerializer):
         return obj.current_stage.approvers.count() == 0
 
     def get_can_apply(self, obj):
-        user = self._approval_capable_user()
-        return bool(user and obj.status == ECO.Status.APPROVED)
+        return False
 
 class ECOApprovalSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)

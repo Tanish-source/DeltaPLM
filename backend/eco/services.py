@@ -48,9 +48,19 @@ def sync_current_stage_approvals(eco):
         return
     seed_approvals_for_stage(eco)
 
+
+def eco_has_recorded_changes(eco):
+    if eco.eco_type == ECO.ECOType.PRODUCT:
+        return eco.product_changes.exists() or eco.product_attachment_changes.exists()
+    if eco.eco_type == ECO.ECOType.BOM:
+        return eco.bom_component_changes.exists() or eco.bom_operation_changes.exists()
+    return False
+
 def submit_eco_to_workflow(eco, user=None):
     if eco.status != ECO.Status.NEW:
-        raise ValueError("Only NEW drafts can be submitted.")
+        raise ValueError("Only Draft ECOs can be started.")
+    if not eco_has_recorded_changes(eco):
+        raise ValueError("Add at least one change before starting the ECO.")
 
     ensure_default_stages()
     first_stage = Stage.objects.filter(is_active=True).order_by('sequence').first()
@@ -63,16 +73,43 @@ def submit_eco_to_workflow(eco, user=None):
         # Reset any old approvals before starting fresh
         ECOApproval.objects.filter(eco=eco).delete()
         seed_approvals_for_stage(eco)
+
+        if not Stage.objects.filter(is_active=True, sequence__gt=first_stage.sequence).exists():
+            eco.status = ECO.Status.APPROVED
+            eco.save(update_fields=['status'])
+            log_audit(
+                action=AuditLog.Action.ECO_SUBMITTED,
+                record_type='ECO',
+                record_id=eco.id,
+                user=user,
+                description=f"ECO started and moved to final stage '{first_stage.name}'."
+            )
+            log_audit(
+                action=AuditLog.Action.STAGE_CHANGED,
+                record_type='ECO',
+                record_id=eco.id,
+                user=user,
+                description=f"ECO entered final stage '{first_stage.name}'. Applying changes automatically."
+            )
+            return apply_eco(eco, user)
     else:
         eco.status = ECO.Status.APPROVED
         eco.save()
+        log_audit(
+            action=AuditLog.Action.ECO_SUBMITTED,
+            record_type='ECO',
+            record_id=eco.id,
+            user=user,
+            description="ECO started with no configured stages and will be applied automatically."
+        )
+        return apply_eco(eco, user)
         
     log_audit(
         action=AuditLog.Action.ECO_SUBMITTED,
         record_type='ECO',
         record_id=eco.id,
         user=user,
-        description="ECO submitted to workflow."
+        description=f"ECO started and moved to stage '{first_stage.name}'."
     )
     return eco
 
@@ -224,25 +261,37 @@ def advance_to_next_stage(eco, user=None):
         eco.current_stage = next_stage
         eco.rejected_stage = None # Clear on advancement
         eco.save()
-        seed_approvals_for_stage(eco)
-        log_audit(
-            action=AuditLog.Action.STAGE_CHANGED,
-            record_type='ECO',
-            record_id=eco.id,
-            user=user,
-            description=f"ECO advanced to stage '{next_stage.name}'."
-        )
+        if Stage.objects.filter(is_active=True, sequence__gt=next_stage.sequence).exists():
+            seed_approvals_for_stage(eco)
+            log_audit(
+                action=AuditLog.Action.STAGE_CHANGED,
+                record_type='ECO',
+                record_id=eco.id,
+                user=user,
+                description=f"ECO advanced to stage '{next_stage.name}'."
+            )
+        else:
+            eco.status = ECO.Status.APPROVED
+            eco.save(update_fields=['status'])
+            log_audit(
+                action=AuditLog.Action.STAGE_CHANGED,
+                record_type='ECO',
+                record_id=eco.id,
+                user=user,
+                description=f"ECO entered final stage '{next_stage.name}'. Applying changes automatically."
+            )
+            apply_eco(eco, user)
     else:
         eco.status = ECO.Status.APPROVED
-        eco.current_stage = None
-        eco.save()
+        eco.save(update_fields=['status'])
         log_audit(
             action=AuditLog.Action.STAGE_CHANGED,
             record_type='ECO',
             record_id=eco.id,
             user=user,
-            description="All stages approved. ECO is now APPROVED."
+            description="ECO completed the final configured stage. Applying changes automatically."
         )
+        apply_eco(eco, user)
 
 def apply_eco(eco, user=None):
     """
@@ -254,6 +303,9 @@ def apply_eco(eco, user=None):
 
     from masterdata.models import Product, BillOfMaterials, BomComponent, BomOperation, ProductAttachment
 
+    def operation_effective_name(change):
+        return change.new_operation_name or change.operation_name
+
     new_record_id = None
     target_id = None
     target_name = "Product" if eco.eco_type == ECO.ECOType.PRODUCT else "BoM"
@@ -262,6 +314,13 @@ def apply_eco(eco, user=None):
         if eco.eco_type == ECO.ECOType.PRODUCT:
             target_product = eco.product
             target_id = target_product.id
+            removed_attachment_ids = set(
+                eco.product_attachment_changes.filter(
+                    change_type='remove',
+                    original_attachment_id__isnull=False,
+                ).values_list('original_attachment_id', flat=True)
+            )
+            add_attachment_changes = eco.product_attachment_changes.filter(change_type='add')
             
             if eco.version_update:
                 # 1. Clone Product
@@ -277,11 +336,18 @@ def apply_eco(eco, user=None):
                 new_record_id = new_product.id
 
                 # Clone Attachments
-                for att in target_product.attachments.all():
+                for att in target_product.attachments.exclude(id__in=removed_attachment_ids):
                     ProductAttachment.objects.create(
                         product=new_product,
                         file=att.file,
                         name=att.name
+                    )
+
+                for change in add_attachment_changes:
+                    ProductAttachment.objects.create(
+                        product=new_product,
+                        file=change.file,
+                        name=change.attachment_name or getattr(change.file, 'name', 'Attachment')
                     )
 
                 # Clone active BOMs to point to new product version
@@ -315,6 +381,14 @@ def apply_eco(eco, user=None):
                 for change in eco.product_changes.all():
                     setattr(target_product, change.field_name, change.new_value)
                 target_product.save()
+                if removed_attachment_ids:
+                    target_product.attachments.filter(id__in=removed_attachment_ids).delete()
+                for change in add_attachment_changes:
+                    ProductAttachment.objects.create(
+                        product=target_product,
+                        file=change.file,
+                        name=change.attachment_name or getattr(change.file, 'name', 'Attachment')
+                    )
 
         elif eco.eco_type == ECO.ECOType.BOM:
             target_bom = eco.bom
@@ -359,16 +433,20 @@ def apply_eco(eco, user=None):
                     if change.change_type == 'add':
                         BomOperation.objects.create(
                             bom=new_bom,
-                            name=change.operation_name,
+                            name=operation_effective_name(change),
                             duration=change.new_duration,
-                            work_center=''
+                            work_center=change.new_work_center
                         )
                     elif change.change_type == 'remove':
                         if change.operation_name in ops:
                             del ops[change.operation_name]
                     elif change.change_type == 'modify':
                         if change.operation_name in ops:
-                            ops[change.operation_name].duration = change.new_duration
+                            original_op = ops.pop(change.operation_name)
+                            original_op.duration = change.new_duration
+                            original_op.name = operation_effective_name(change)
+                            original_op.work_center = change.new_work_center
+                            ops[original_op.name] = original_op
                             
                 for op in ops.values():
                     BomOperation.objects.create(
@@ -406,9 +484,9 @@ def apply_eco(eco, user=None):
                     if change.change_type == 'add':
                         BomOperation.objects.create(
                             bom=target_bom,
-                            name=change.operation_name,
+                            name=operation_effective_name(change),
                             duration=change.new_duration,
-                            work_center=''
+                            work_center=change.new_work_center
                         )
                     elif change.change_type == 'remove':
                         if change.operation_name in ops:
@@ -416,7 +494,9 @@ def apply_eco(eco, user=None):
                     elif change.change_type == 'modify':
                         if change.operation_name in ops:
                             op = ops[change.operation_name]
+                            op.name = operation_effective_name(change)
                             op.duration = change.new_duration
+                            op.work_center = change.new_work_center
                             op.save()
 
         # Update ECO

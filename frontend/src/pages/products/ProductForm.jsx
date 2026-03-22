@@ -277,7 +277,11 @@ export default function ProductForm() {
       {/* Phase 6 — Version History (only shown when viewing existing product) */}
       {isEditing && productData && (
         <div className="mt-8">
-          <VersionHistory productId={id} productName={productData.name} />
+          <VersionHistory
+            recordId={id}
+            recordName={productData.name}
+            recordType="product"
+          />
         </div>
       )}
     </div>

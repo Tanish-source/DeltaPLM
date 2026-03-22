@@ -211,9 +211,7 @@ export default function BomForm() {
                 disabled={isReadOnly || isSubmitting || isEditing}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a product...">
-                    {product ? (products.find(p => p.id.toString() === product)?.name || `Product ${product}`) : undefined}
-                  </SelectValue>
+                  <SelectValue placeholder="Select a product..." />
                 </SelectTrigger>
                 <SelectContent>
                   {products.map(p => (
@@ -266,9 +264,7 @@ export default function BomForm() {
                         disabled={isReadOnly || isSubmitting}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select component...">
-                            {comp.component_product ? (products.find(p => p.id.toString() === comp.component_product.toString())?.name || `Product ${comp.component_product}`) : undefined}
-                          </SelectValue>
+                          <SelectValue placeholder="Select component..." />
                         </SelectTrigger>
                         <SelectContent>
                           {products.filter(p => p.id.toString() !== product).map(p => (
@@ -423,8 +419,9 @@ export default function BomForm() {
       {isEditing && bomData && (
         <div className="mt-8">
           <VersionHistory
-            productId={bomData.product?.id || bomData.product}
-            productName={products.find(p => p.id.toString() === product)?.name || `Product ${product}`}
+            recordId={id}
+            recordName={bomData.reference || `BoM ${id}`}
+            recordType="bom"
           />
         </div>
       )}

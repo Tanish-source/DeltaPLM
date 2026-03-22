@@ -23,9 +23,9 @@ export const ECO_STATUS = {
 }
 
 export const ECO_STATUS_LABELS = {
-  [ECO_STATUS.NEW]: 'New',
+  [ECO_STATUS.NEW]: 'Draft',
   [ECO_STATUS.APPROVAL]: 'In Approval',
-  [ECO_STATUS.APPROVED]: 'Approved',
+  [ECO_STATUS.APPROVED]: 'Ready',
   [ECO_STATUS.APPLIED]: 'Applied',
   [ECO_STATUS.REJECTED]: 'Rejected',
 }

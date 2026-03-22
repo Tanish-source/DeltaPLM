@@ -110,9 +110,7 @@ export default function BomList() {
         <div className="w-[200px]">
           <Select value={selectedProduct} onValueChange={setSelectedProduct}>
             <SelectTrigger>
-              <SelectValue placeholder="All Products">
-                {selectedProduct !== 'all' ? (products.find(p => p.id.toString() === selectedProduct)?.name || selectedProduct) : "All Products"}
-              </SelectValue>
+              <SelectValue placeholder="All Products" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Products</SelectItem>

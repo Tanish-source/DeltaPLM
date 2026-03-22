@@ -44,3 +44,19 @@ export const applyEco = (id) => {
   return api.post(`/ecos/${id}/apply/`);
 };
 
+export const getEcoAttachmentChanges = (id) => {
+  return api.get(`/ecos/${id}/attachment-changes/`);
+};
+
+export const addEcoAttachmentChange = (id, data) => {
+  return api.post(`/ecos/${id}/attachment-changes/`, data, {
+    headers: {
+      'Content-Type': undefined,
+    },
+  });
+};
+
+export const deleteEcoAttachmentChange = (id, changeId) => {
+  return api.delete(`/ecos/${id}/attachment-changes/${changeId}/`);
+};
+

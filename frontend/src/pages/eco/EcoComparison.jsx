@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getEcoDiff, getEco, getEcoChanges } from '@/api/ecos'
+import { getEcoDiff, getEco } from '@/api/ecos'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
@@ -179,6 +178,51 @@ export default function EcoComparison() {
                 </TableBody>
               </Table>
             </div>
+
+            <div className="mt-6 space-y-3">
+              <h3 className="text-sm font-medium">Attachment Changes</h3>
+              {(!diff?.attachments || diff.attachments.length === 0) ? (
+                <p className="text-sm text-muted-foreground italic">No attachment changes.</p>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Attachment</TableHead>
+                        <TableHead>Before</TableHead>
+                        <TableHead>After</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {diff.attachments.map((attachment) => (
+                        <TableRow
+                          key={attachment.id}
+                          className={
+                            attachment.change === 'add'
+                              ? 'bg-emerald-50/30 dark:bg-emerald-950/5'
+                              : 'bg-red-50/30 dark:bg-red-950/5'
+                          }
+                        >
+                          <TableCell className="font-medium">
+                            {attachment.name || attachment.new_name || attachment.old_name || 'Attachment'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {attachment.old_name || '—'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {attachment.new_name || '—'}
+                          </TableCell>
+                          <TableCell>
+                            <ChangeIndicator type={attachment.change} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -268,6 +312,8 @@ export default function EcoComparison() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Operation</TableHead>
+                          <TableHead className="bg-red-50/50 dark:bg-red-950/10">Old Work Center</TableHead>
+                          <TableHead className="bg-emerald-50/50 dark:bg-emerald-950/10">New Work Center</TableHead>
                           <TableHead className="bg-red-50/50 dark:bg-red-950/10">Old Duration</TableHead>
                           <TableHead className="bg-emerald-50/50 dark:bg-emerald-950/10">New Duration</TableHead>
                           <TableHead>Status</TableHead>
@@ -275,16 +321,35 @@ export default function EcoComparison() {
                       </TableHeader>
                       <TableBody>
                         {diff.operations.map((op, i) => (
-                          <TableRow key={i} className={op.changed ? 'bg-amber-50/30 dark:bg-amber-950/5' : ''}>
+                          <TableRow
+                            key={i}
+                            className={
+                              op.change === 'add'
+                                ? 'bg-emerald-50/30 dark:bg-emerald-950/5'
+                                : op.change === 'remove'
+                                  ? 'bg-red-50/30 dark:bg-red-950/5'
+                                  : op.changed
+                                    ? 'bg-amber-50/30 dark:bg-amber-950/5'
+                                    : ''
+                            }
+                          >
                             <TableCell className="font-medium">{op.name}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {op.old_work_center ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {op.new_work_center ?? '—'}
+                            </TableCell>
                             <TableCell className={op.changed ? 'text-red-600 line-through' : 'text-muted-foreground'}>
-                              {op.old_duration}
+                              {op.old_duration ?? '—'}
                             </TableCell>
                             <TableCell className={op.changed ? 'text-emerald-700 font-semibold' : 'text-muted-foreground'}>
-                              {op.new_duration}
+                              {op.new_duration ?? '—'}
                             </TableCell>
                             <TableCell>
-                              {op.changed ? (
+                              {op.change ? (
+                                <ChangeIndicator type={op.change} />
+                              ) : op.changed ? (
                                 <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">Changed</Badge>
                               ) : (
                                 <span className="text-xs text-muted-foreground flex items-center gap-1">

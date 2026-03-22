@@ -194,10 +194,33 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'])
     def versions(self, request, pk=None):
+        from audits.models import AuditLog
+
         bom = self.get_object()
         versions = BillOfMaterials.objects.filter(product_id=bom.product_id).order_by('-version')
-        serializer = self.get_serializer(versions, many=True)
-        return Response(serializer.data)
+
+        data = []
+        for version in versions:
+            latest_audit = AuditLog.objects.filter(
+                record_type='BoM',
+                record_id=version.id,
+            ).select_related('user').order_by('-timestamp').first()
+
+            changed_by = "System"
+            if latest_audit and latest_audit.user:
+                changed_by = latest_audit.user.get_full_name().strip() or latest_audit.user.username
+
+            data.append({
+                "id": version.id,
+                "version": version.version,
+                "is_current": version.is_active,
+                "changed_at": version.updated_at,
+                "changed_by": changed_by,
+                "eco_title": None,
+                "fields_changed": [],
+                "reference": version.reference,
+            })
+        return Response(data)
 
     @action(detail=True, methods=['get'])
     def compare(self, request, pk=None):

@@ -24,12 +24,12 @@ export default function StageProgress({
   }
 
   const sorted = [...stages].sort((a, b) => a.sequence - b.sequence)
-  const currentIdx = sorted.findIndex((s) => s.id === currentStageId)
+  const currentIdx = sorted.findIndex((s) => String(s.id) === String(currentStageId))
 
   const getStepState = (stage, idx) => {
     if (ecoStatus === 'approved' || ecoStatus === 'applied') return 'completed'
-    if (ecoStatus === 'rejected' && stage.id === rejectedStageId) return 'rejected'
-    if (ecoStatus === 'rejected' && idx < sorted.findIndex(s => s.id === rejectedStageId)) return 'completed'
+    if (ecoStatus === 'rejected' && String(stage.id) === String(rejectedStageId)) return 'rejected'
+    if (ecoStatus === 'rejected' && idx < sorted.findIndex(s => String(s.id) === String(rejectedStageId))) return 'completed'
     if (ecoStatus === 'rejected') return 'pending'
     if (idx < currentIdx) return 'completed'
     if (idx === currentIdx) return 'active'
