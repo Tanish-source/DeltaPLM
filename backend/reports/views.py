@@ -3,9 +3,27 @@ from rest_framework.response import Response
 from rest_framework import permissions
 from masterdata.models import Product, BillOfMaterials
 from eco.models import ECO, ECOApproval, Stage
+from eco.serializers import ECOListSerializer
 from django.db.models import Prefetch
 from django.utils import timezone
 from datetime import timedelta
+
+class DashboardSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        recent_ecos_qs = ECO.objects.select_related('product', 'created_by').order_by('-created_at')[:5]
+        recent_ecos = ECOListSerializer(recent_ecos_qs, many=True, context={'request': request}).data
+
+        return Response({
+            "stats": {
+                "products": Product.objects.filter(is_active=True).count(),
+                "boms": BillOfMaterials.objects.filter(is_active=True).count(),
+                "ecos": ECO.objects.filter(status=ECO.Status.APPROVAL).count(),
+                "pending": ECOApproval.objects.filter(decision=ECOApproval.Decision.PENDING).count(),
+            },
+            "recent_ecos": recent_ecos,
+        })
 
 
 class EcoSummaryReportView(APIView):
@@ -41,7 +59,12 @@ class EcoSummaryReportView(APIView):
             avg_approval_time = f"{(total_days / decided_approvals.count()):.1f} days"
 
         status_distribution = []
-        for status_value, _ in ECO.Status.choices:
+        visible_distribution_statuses = [
+            ECO.Status.NEW,
+            ECO.Status.APPROVAL,
+            ECO.Status.APPLIED,
+        ]
+        for status_value in visible_distribution_statuses:
             count = ecos.filter(status=status_value).count()
             percentage = round((count / total_ecos) * 100) if total_ecos else 0
             status_distribution.append({
@@ -59,8 +82,10 @@ class EcoSummaryReportView(APIView):
             monthly_trends.append({
                 "month": month_start.strftime("%b %Y"),
                 "created": month_ecos.count(),
-                "approved": month_ecos.filter(status__in=[ECO.Status.APPROVED, ECO.Status.APPLIED]).count(),
-                "rejected": month_ecos.filter(status=ECO.Status.REJECTED).count(),
+                "approved": month_ecos.filter(status=ECO.Status.APPLIED).count(),
+                "rejected": month_ecos.filter(
+                    approvals__decision=ECOApproval.Decision.REJECTED
+                ).distinct().count(),
             })
 
         approver_stats = []

@@ -48,6 +48,7 @@ function App() {
         <Route path="/ecos" element={<EcoList />} />
         <Route path="/ecos/new" element={<EcoForm />} />
         <Route path="/ecos/:id" element={<EcoForm />} />
+        <Route path="/ecos/:id/edit" element={<EcoForm />} />
 
         {/* ECO Detail — Phase 5 */}
         <Route path="/ecos/:id/detail" element={<EcoDetail />} />

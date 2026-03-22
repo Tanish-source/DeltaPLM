@@ -35,9 +35,7 @@ class ECO(models.Model):
     class Status(models.TextChoices):
         NEW      = 'new', 'Draft'
         APPROVAL = 'approval', 'In Approval'
-        APPROVED = 'approved', 'Ready'
         APPLIED  = 'applied', 'Applied'
-        REJECTED = 'rejected', 'Rejected'
 
     title          = models.CharField(max_length=255)
     eco_type       = models.CharField(max_length=10, choices=ECOType.choices)

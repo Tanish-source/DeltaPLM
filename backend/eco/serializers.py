@@ -72,6 +72,30 @@ class ECOBomOperationChangeSerializer(serializers.ModelSerializer):
             'new_work_center',
         ]
 
+class ECOListSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    bom_reference = serializers.CharField(source='bom.reference', read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = ECO
+        fields = [
+            'id',
+            'title',
+            'eco_type',
+            'product',
+            'product_name',
+            'bom',
+            'bom_reference',
+            'status',
+            'created_by',
+            'created_by_username',
+            'created_by_name',
+            'created_at',
+            'updated_at',
+        ]
+
 class ECOSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
     bom_version = serializers.CharField(source='bom.version', read_only=True)
@@ -122,10 +146,13 @@ class ECOSerializer(serializers.ModelSerializer):
                 'bom': 'Bill of Materials must not be set when ECO type is "product".'
             })
             
-        if bom and getattr(bom, 'is_active', True) is False:
+        same_bom_as_instance = bool(self.instance and bom and getattr(self.instance, 'bom_id', None) == bom.id)
+        same_product_as_instance = bool(self.instance and product and getattr(self.instance, 'product_id', None) == product.id)
+
+        if bom and getattr(bom, 'is_active', True) is False and not same_bom_as_instance:
             raise serializers.ValidationError({'bom': 'Selected BoM must be active.'})
             
-        if product and getattr(product, 'is_active', True) is False:
+        if product and getattr(product, 'is_active', True) is False and not same_product_as_instance:
             raise serializers.ValidationError({'product': 'Selected Product must be active.'})
             
         if eco_type == 'bom' and bom and product and bom.product_id != product.id:
@@ -234,6 +261,9 @@ class ECOSerializer(serializers.ModelSerializer):
         bom_comp_data = validated_data.pop('bom_component_changes', None)
         bom_op_data = validated_data.pop('bom_operation_changes', None)
         
+        if 'responsible_user' in validated_data:
+            instance.responsible_user = validated_data.pop('responsible_user')
+            
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()

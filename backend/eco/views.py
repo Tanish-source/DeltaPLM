@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .models import ECO, ECOApproval, ECOProductAttachmentChange, Stage, StageApprover, StageRule
 from .serializers import (
-    ECOSerializer, ECOApprovalSerializer, StageSerializer,
+    ECOSerializer, ECOListSerializer, ECOApprovalSerializer, StageSerializer,
     StageApproverSerializer, StageRuleSerializer, ECOProductAttachmentChangeSerializer
 )
 from .services import submit_eco_to_workflow, approve_stage, reject_stage, validate_stage, apply_eco, ensure_default_stages
@@ -62,12 +62,39 @@ class StageViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ECOViewSet(viewsets.ModelViewSet):
-    queryset = ECO.objects.all().order_by('-created_at')
     serializer_class = ECOSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     filterset_fields = ['eco_type', 'status', 'product']
     search_fields = ['title']
+
+    def get_queryset(self):
+        base_queryset = ECO.objects.select_related(
+            'product',
+            'bom',
+            'created_by',
+            'responsible_user',
+            'current_stage',
+            'rejected_stage',
+        ).order_by('-created_at')
+
+        if self.action == 'list':
+            return base_queryset
+
+        return base_queryset.prefetch_related(
+            'product_changes',
+            'product_attachment_changes',
+            'bom_component_changes__component_product',
+            'bom_operation_changes',
+            'approvals__user',
+            'approvals__stage',
+            'current_stage__approvers__user',
+        )
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ECOListSerializer
+        return ECOSerializer
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -86,6 +113,17 @@ class ECOViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Cannot edit an ECO that is not in the NEW status.")
         return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        user = request.user
+        if getattr(user, 'role', '') not in ['engineering', 'admin'] and not getattr(user, 'is_superuser', False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Engineering or Admin can edit ECOs.")
+        eco = self.get_object()
+        if eco.status != 'new':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Cannot edit an ECO that is not in the NEW status.")
+        return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         user = request.user
@@ -151,7 +189,7 @@ class ECOViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='apply')
     def apply_eco(self, request, pk=None):
-        """Apply an approved ECO to master data. Auto-sets effective_date."""
+        """Apply an ECO that has completed the final approval stage."""
         if getattr(request.user, 'role', '') not in ['approver', 'admin'] and not getattr(request.user, 'is_superuser', False):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only Approvers or Admin can apply ECOs.")

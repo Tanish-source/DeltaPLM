@@ -75,8 +75,6 @@ def submit_eco_to_workflow(eco, user=None):
         seed_approvals_for_stage(eco)
 
         if not Stage.objects.filter(is_active=True, sequence__gt=first_stage.sequence).exists():
-            eco.status = ECO.Status.APPROVED
-            eco.save(update_fields=['status'])
             log_audit(
                 action=AuditLog.Action.ECO_SUBMITTED,
                 record_type='ECO',
@@ -93,8 +91,6 @@ def submit_eco_to_workflow(eco, user=None):
             )
             return apply_eco(eco, user)
     else:
-        eco.status = ECO.Status.APPROVED
-        eco.save()
         log_audit(
             action=AuditLog.Action.ECO_SUBMITTED,
             record_type='ECO',
@@ -271,8 +267,6 @@ def advance_to_next_stage(eco, user=None):
                 description=f"ECO advanced to stage '{next_stage.name}'."
             )
         else:
-            eco.status = ECO.Status.APPROVED
-            eco.save(update_fields=['status'])
             log_audit(
                 action=AuditLog.Action.STAGE_CHANGED,
                 record_type='ECO',
@@ -282,8 +276,6 @@ def advance_to_next_stage(eco, user=None):
             )
             apply_eco(eco, user)
     else:
-        eco.status = ECO.Status.APPROVED
-        eco.save(update_fields=['status'])
         log_audit(
             action=AuditLog.Action.STAGE_CHANGED,
             record_type='ECO',
@@ -295,11 +287,14 @@ def advance_to_next_stage(eco, user=None):
 
 def apply_eco(eco, user=None):
     """
-    Apply an approved ECO — sets status to APPLIED and auto-populates effective_date.
+    Apply an ECO that has completed its approval pipeline.
     Implements Phase 6 versioning and in-place update logic.
     """
-    if eco.status != ECO.Status.APPROVED:
-        raise ValueError("Only APPROVED ECOs can be applied.")
+    if eco.status != ECO.Status.APPROVAL:
+        raise ValueError("Only in-approval ECOs that completed the pipeline can be applied.")
+    final_stage = Stage.objects.filter(is_active=True).order_by('-sequence').first()
+    if final_stage and eco.current_stage_id != final_stage.id:
+        raise ValueError("ECO can only be applied after the final approval stage.")
 
     from masterdata.models import Product, BillOfMaterials, BomComponent, BomOperation, ProductAttachment
 

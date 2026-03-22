@@ -6,8 +6,8 @@ import { cn } from '@/lib/utils'
  *
  * @param {Array<{id, name, sequence}>} stages
  * @param {number|string} currentStageId
- * @param {string} ecoStatus - 'new' | 'approval' | 'approved' | 'applied' | 'rejected'
- * @param {number|string} rejectedStageId - if rejected, which stage it was rejected at
+ * @param {string} ecoStatus - 'new' | 'approval' | 'applied'
+ * @param {number|string} rejectedStageId - if previously rejected, which stage it was rejected at
  */
 export default function StageProgress({
   stages = [],
@@ -25,12 +25,13 @@ export default function StageProgress({
 
   const sorted = [...stages].sort((a, b) => a.sequence - b.sequence)
   const currentIdx = sorted.findIndex((s) => String(s.id) === String(currentStageId))
+  const rejectedIdx = sorted.findIndex((s) => String(s.id) === String(rejectedStageId))
 
   const getStepState = (stage, idx) => {
-    if (ecoStatus === 'approved' || ecoStatus === 'applied') return 'completed'
-    if (ecoStatus === 'rejected' && String(stage.id) === String(rejectedStageId)) return 'rejected'
-    if (ecoStatus === 'rejected' && idx < sorted.findIndex(s => String(s.id) === String(rejectedStageId))) return 'completed'
-    if (ecoStatus === 'rejected') return 'pending'
+    if (ecoStatus === 'applied') return 'completed'
+    if (ecoStatus === 'new' && rejectedIdx >= 0 && String(stage.id) === String(rejectedStageId)) return 'rejected'
+    if (ecoStatus === 'new' && rejectedIdx >= 0 && idx < rejectedIdx) return 'completed'
+    if (ecoStatus === 'new' && rejectedIdx >= 0) return 'pending'
     if (idx < currentIdx) return 'completed'
     if (idx === currentIdx) return 'active'
     return 'pending'

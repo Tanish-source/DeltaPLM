@@ -56,7 +56,7 @@ export default function EcoForm() {
   const { id } = useParams()
   const isEdit = !!id
 
-  const { hasRole } = useAuth()
+  const { user, hasRole } = useAuth()
   const canEdit = hasRole([ROLES.ENGINEERING, ROLES.ADMIN])
 
   const [isLoading, setIsLoading] = useState(false)
@@ -93,26 +93,41 @@ export default function EcoForm() {
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        const [prodRes, bomRes, userRes] = await Promise.all([
+        const requests = [
           getProducts({ is_active: true }),
-          getBoms({ is_active: true }),
-          getUsers()
-        ])
-        
-        setProducts(prodRes.data?.results || prodRes.data || [])
-        setBoms(bomRes.data?.results || bomRes.data || [])
-        setUsers(userRes.data?.results || userRes.data || [])
+          getUsers(),
+        ]
 
         if (isEdit) {
-          const { data } = await getEco(id)
+          requests.push(getEco(id))
+        }
+
+        const [prodRes, userRes, ecoRes] = await Promise.all(requests)
+
+        setProducts(prodRes.data?.results || prodRes.data || [])
+        setUsers(userRes.data?.results || userRes.data || [])
+
+        if (isEdit && ecoRes?.data) {
+          const { data } = ecoRes
           setEcoData(data)
           setTitle(data.title || '')
           setEcoType(data.eco_type || ECO_TYPE.PRODUCT)
           setProduct(data.product?.id?.toString() || data.product?.toString() || '')
           setBom(data.bom?.id?.toString() || data.bom?.toString() || '')
-          setResponsibleUser(data.responsible_user?.id?.toString() || data.created_by?.id?.toString() || '')
+          setResponsibleUser(
+            data.responsible_user?.id?.toString() || 
+            data.responsible_user?.toString() || 
+            data.created_by?.id?.toString() || 
+            data.created_by?.toString() || 
+            ''
+          )
           setEffectiveDate(data.effective_date || '')
           setVersionUpdate(data.version_update ?? true)
+        } else {
+          // Pre-select current user on creation
+          if (user?.id) {
+            setResponsibleUser(user.id.toString())
+          }
         }
       } catch (error) {
         console.error('Failed to fetch initial data:', error)
@@ -121,7 +136,26 @@ export default function EcoForm() {
       }
     }
     fetchData()
-  }, [id, isEdit])
+  }, [id, isEdit, user])
+
+  useEffect(() => {
+    const fetchBomsForProduct = async () => {
+      if (ecoType !== ECO_TYPE.BOM || !product) {
+        setBoms([])
+        return
+      }
+
+      try {
+        const { data } = await getBoms({ is_active: true, product })
+        setBoms(data?.results || data || [])
+      } catch (error) {
+        console.error('Failed to fetch filtered BoMs:', error)
+        setBoms([])
+      }
+    }
+
+    fetchBomsForProduct()
+  }, [ecoType, product])
 
   const loadTargetData = async (type, targetId) => {
     if (!targetId) {
@@ -614,9 +648,9 @@ export default function EcoForm() {
     const payload = {
       title,
       eco_type: ecoType,
-      product: product || null,
-      bom: bom || null,
-      responsible_user: responsibleUser || null,
+      product: product ? parseInt(product.toString(), 10) : null,
+      bom: bom ? parseInt(bom.toString(), 10) : null,
+      responsible_user: responsibleUser ? parseInt(String(responsibleUser), 10) : null,
       effective_date: effectiveDate || null,
       version_update: versionUpdate,
       status: ECO_STATUS.NEW,
@@ -695,7 +729,7 @@ export default function EcoForm() {
     setIsSubmitting(true)
     try {
       await persistEcoDraft()
-      navigate('/ecos')
+      navigate('/ecos', { replace: true })
     } catch (error) {
       console.error('Failed to save ECO:', error)
     } finally {
@@ -718,7 +752,7 @@ export default function EcoForm() {
   }
 
   const isReadOnly = !canEdit || (isEdit && ecoData?.status !== ECO_STATUS.NEW)
-  const availableBoms = boms.filter(b => b.product?.toString() === product)
+  const availableBoms = boms
 
   if (isLoading) {
     return <div className="p-8 text-center text-muted-foreground">Loading...</div>
@@ -815,15 +849,18 @@ export default function EcoForm() {
                 disabled={isReadOnly || isSubmitting || !products.length || (isEdit && ecoType === ECO_TYPE.PRODUCT)}
               >
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select Product..." />
+                  <SelectValue placeholder="Select Product...">
+                    {products.find(p => p.id.toString() === product)?.name || 
+                     (isEdit ? (ecoData?.product_name || ecoData?.product?.name || `Product ${product}`) : '')}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {products.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               {product && (
-                <Button variant="outline" asChild size="sm">
-                  <Link to={`/products/${product}`} target="_blank" rel="noopener noreferrer">Open Product</Link>
+                <Button variant="outline" size="sm" render={<Link to={`/products/${product}`} target="_blank" rel="noopener noreferrer" />}>
+                  Open Product
                 </Button>
               )}
             </div>
@@ -838,15 +875,27 @@ export default function EcoForm() {
                   disabled={isReadOnly || isSubmitting || !product || !availableBoms.length || isEdit}
                 >
                   <SelectTrigger className="flex-1">
-                    <SelectValue placeholder={product ? "Select BoM..." : "Select Product first"} />
+                    <SelectValue placeholder={product ? "Select BoM..." : "Select Product first"}>
+                      {(() => {
+                        const b = availableBoms.find(b => b.id.toString() === bom);
+                        if (b) return `Version ${b.version} (${b.reference})`;
+                        if (isEdit && bom) {
+                          const ref = ecoData?.bom_reference || ecoData?.bom?.reference;
+                          const ver = ecoData?.bom_version || ecoData?.bom?.version;
+                          if (ref) return `Version ${ver} (${ref})`;
+                          return `BoM ${bom}`;
+                        }
+                        return '';
+                      })()}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {availableBoms.map(b => <SelectItem key={b.id} value={b.id.toString()}>Version {b.version} ({b.reference})</SelectItem>)}
                   </SelectContent>
                 </Select>
                 {bom && (
-                  <Button variant="outline" asChild size="sm">
-                    <Link to={`/boms/${bom}`} target="_blank" rel="noopener noreferrer">Open BoM</Link>
+                  <Button variant="outline" size="sm" render={<Link to={`/boms/${bom}`} target="_blank" rel="noopener noreferrer" />}>
+                    Open BoM
                   </Button>
                 )}
               </div>
@@ -1105,7 +1154,10 @@ export default function EcoForm() {
                               disabled={isReadOnly || isSubmitting || row.source === 'existing'}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="Select component product" />
+                                <SelectValue placeholder="Select component product">
+                                  {products.find(p => p.id.toString() === row.component_product)?.name || 
+                                   (row.component_product ? (row.component_name || `Product ${row.component_product}`) : '')}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 {products

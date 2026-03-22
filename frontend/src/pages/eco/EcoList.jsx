@@ -23,7 +23,10 @@ export default function EcoList() {
   })
 
   useEffect(() => {
-    fetchEcos()
+    const timer = setTimeout(() => {
+      fetchEcos()
+    }, 300)
+    return () => clearTimeout(timer)
   }, [filters.status, filters.type, filters.search])
 
   const fetchEcos = async () => {
@@ -89,7 +92,7 @@ export default function EcoList() {
           size="icon" 
           onClick={(e) => {
             e.stopPropagation()
-            navigate(`/ecos/${row.id}`)
+            navigate(`/ecos/${row.id}/edit`)
           }}
           title="Edit Draft"
         >

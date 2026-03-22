@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { ROLES, ECO_STATUS, ECO_STATUS_LABELS } from '@/lib/constants'
+import { ROLES } from '@/lib/constants'
+import { getDashboardSummary } from '@/api/reports'
 import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Package,
@@ -18,7 +18,6 @@ import {
   ArrowRight,
   TrendingUp,
 } from 'lucide-react'
-import api from '@/api/client'
 
 // ── Summary Stat Card ───────────────────────────────────────────
 function StatCard({ title, value, icon: Icon, description, isLoading }) {
@@ -56,37 +55,9 @@ export default function Dashboard() {
     const fetchDashboardData = async () => {
       setIsLoading(true)
       try {
-        const [productsRes, bomsRes, ecosRes] = await Promise.allSettled([
-          api.get('/products/', { params: { is_active: true } }),
-          api.get('/boms/', { params: { is_active: true } }),
-          api.get('/ecos/'),
-        ])
-
-        const products = productsRes.status === 'fulfilled'
-          ? (productsRes.value.data.results || productsRes.value.data)
-          : []
-        const boms = bomsRes.status === 'fulfilled'
-          ? (bomsRes.value.data.results || bomsRes.value.data)
-          : []
-        const ecos = ecosRes.status === 'fulfilled'
-          ? (ecosRes.value.data.results || ecosRes.value.data)
-          : []
-
-        const activeEcos = Array.isArray(ecos)
-          ? ecos.filter(e => e.status === ECO_STATUS.APPROVAL)
-          : []
-        const pendingApprovals = Array.isArray(ecos)
-          ? ecos.filter(e => e.status === ECO_STATUS.APPROVAL)
-          : []
-
-        setStats({
-          products: Array.isArray(products) ? products.length : 0,
-          boms: Array.isArray(boms) ? boms.length : 0,
-          ecos: activeEcos.length,
-          pending: pendingApprovals.length,
-        })
-
-        setRecentEcos(Array.isArray(ecos) ? ecos.slice(0, 5) : [])
+        const { data } = await getDashboardSummary()
+        setStats(data?.stats || { products: 0, boms: 0, ecos: 0, pending: 0 })
+        setRecentEcos(data?.recent_ecos || [])
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
         setStats({ products: 0, boms: 0, ecos: 0, pending: 0 })

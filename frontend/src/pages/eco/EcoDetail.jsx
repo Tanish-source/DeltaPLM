@@ -19,7 +19,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -28,15 +27,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import StageProgress from '@/components/shared/StageProgress'
 
@@ -96,8 +86,6 @@ export default function EcoDetail() {
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState('')
-  const [commentDialog, setCommentDialog] = useState({ open: false, action: null })
-  const [comment, setComment] = useState('')
 
   const fetchData = useCallback(async () => {
     setIsLoading(true)
@@ -154,17 +142,15 @@ export default function EcoDetail() {
     }
   }
 
-  const handleApproveReject = async () => {
+  const handleApproveReject = async (action) => {
     setActionLoading(true)
     setActionError('')
     try {
-      if (commentDialog.action === 'approve') {
-        await approveEco(id, comment)
+      if (action === 'approve') {
+        await approveEco(id, '')
       } else {
-        await rejectEco(id, comment)
+        await rejectEco(id, '')
       }
-      setCommentDialog({ open: false, action: null })
-      setComment('')
       await fetchData()
     } catch (error) {
       setActionError(error?.response?.data?.error || 'Action failed.')
@@ -334,7 +320,7 @@ export default function EcoDetail() {
         </div>
 
         {eco.status === ECO_STATUS.NEW && !isOps && (
-          <Button variant="outline" size="sm" onClick={() => navigate(`/ecos/${id}`)}>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/ecos/${id}/edit`)}>
             Edit Draft
           </Button>
         )}
@@ -763,14 +749,14 @@ export default function EcoDetail() {
             <>
               <Button
                 variant="outline"
-                onClick={() => setCommentDialog({ open: true, action: 'reject' })}
+                onClick={() => handleApproveReject('reject')}
                 disabled={actionLoading}
                 className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50"
               >
                 <XCircle className="h-4 w-4" /> Reject
               </Button>
               <Button
-                onClick={() => setCommentDialog({ open: true, action: 'approve' })}
+                onClick={() => handleApproveReject('approve')}
                 disabled={actionLoading}
                 className="gap-1.5"
               >
@@ -792,57 +778,6 @@ export default function EcoDetail() {
         </div>
       )}
 
-      <Dialog
-        open={commentDialog.open}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCommentDialog({ open: false, action: null })
-            setComment('')
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {commentDialog.action === 'approve' ? 'Approve ECO' : 'Reject ECO'}
-            </DialogTitle>
-            <DialogDescription>
-              {commentDialog.action === 'approve'
-                ? 'Add an optional comment for this approval.'
-                : 'Please provide a reason for rejection.'}
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            placeholder="Enter your comment..."
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            rows={3}
-          />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCommentDialog({ open: false, action: null })
-                setComment('')
-              }}
-              disabled={actionLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant={commentDialog.action === 'reject' ? 'destructive' : 'default'}
-              onClick={handleApproveReject}
-              disabled={actionLoading || (commentDialog.action === 'reject' && !comment.trim())}
-            >
-              {actionLoading
-                ? 'Processing...'
-                : commentDialog.action === 'approve'
-                  ? 'Approve'
-                  : 'Reject'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

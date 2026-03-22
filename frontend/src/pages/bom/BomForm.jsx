@@ -211,11 +211,13 @@ export default function BomForm() {
                 disabled={isReadOnly || isSubmitting || isEditing}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a product..." />
+                  <SelectValue placeholder="Select a product...">
+                    {products.find(p => p.id.toString() === product)?.name || (isEditing ? (bomData?.product_name || bomData?.product?.name || `Product ${product}`) : '')}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {products.map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()}>{p.name || `Un-named Product (${p.id})`}</SelectItem>
+                    <SelectItem key={p.id} value={p.id.toString()}>{p.name || 'Unnamed Product'}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -264,11 +266,13 @@ export default function BomForm() {
                         disabled={isReadOnly || isSubmitting}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select component..." />
+                          <SelectValue placeholder="Select component...">
+                            {products.find(p => p.id.toString() === comp.component_product?.toString())?.name || (comp.component_product ? `Product ${comp.component_product}` : '')}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {products.filter(p => p.id.toString() !== product).map(p => (
-                            <SelectItem key={p.id} value={p.id.toString()}>{p.name || `Un-named Product (${p.id})`}</SelectItem>
+                            <SelectItem key={p.id} value={p.id.toString()}>{p.name || 'Unnamed Product'}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -420,7 +424,7 @@ export default function BomForm() {
         <div className="mt-8">
           <VersionHistory
             recordId={id}
-            recordName={bomData.reference || `BoM ${id}`}
+            recordName={bomData.reference || 'Bill of Materials'}
             recordType="bom"
           />
         </div>

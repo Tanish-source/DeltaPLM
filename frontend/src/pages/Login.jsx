@@ -221,13 +221,13 @@ export default function Login() {
                 <label htmlFor="password" className="text-sm font-medium">
                   Password
                 </label>
-                <button
+                {/* <button
                   type="button"
                   onClick={() => setShowForgot(true)}
                   className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
                 >
                   Forget Password?
-                </button>
+                </button> */}
               </div>
               <Input
                 id="password"

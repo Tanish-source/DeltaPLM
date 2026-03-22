@@ -16,6 +16,10 @@ export const updateEco = (id, data) => {
   return api.put(`/ecos/${id}/`, data);
 };
 
+export const patchEco = (id, data) => {
+  return api.patch(`/ecos/${id}/`, data);
+};
+
 export const getEcoChanges = (id) => {
   return api.get(`/ecos/${id}/changes/`);
 };
@@ -59,4 +63,3 @@ export const addEcoAttachmentChange = (id, data) => {
 export const deleteEcoAttachmentChange = (id, changeId) => {
   return api.delete(`/ecos/${id}/attachment-changes/${changeId}/`);
 };
-
